@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { api } from '../api'
-import { KeyRound, User, Fingerprint, ShieldCheck, Trash2, Plus, Loader, Check, AlertTriangle } from 'lucide-react'
+import { KeyRound, User, Fingerprint, ShieldCheck, Trash2, Plus, Loader, Check, AlertTriangle, X as XIcon } from 'lucide-react'
 
 function bufferToBase64url(buf) {
   return btoa(String.fromCharCode(...new Uint8Array(buf)))
@@ -56,7 +56,8 @@ export default function Profile() {
   const [verifying, setVerifying] = useState(false)
   const [verifyProgress, setVerifyProgress] = useState(0)
   const [verifyTotal, setVerifyTotal] = useState(0)
-  const [verifyError, setVerifyError] = useState('')
+  const [verifyOk, setVerifyOk] = useState(0)
+  const [verifyFail, setVerifyFail] = useState(0)
   const [currentFingerLabel, setCurrentFingerLabel] = useState('')
   const [scanHint, setScanHint] = useState('')
 
@@ -110,10 +111,12 @@ export default function Profile() {
         },
       }
 
-      const registerResult = await api.webauthnRegister(user.id, credential, label)
+      await api.webauthnRegister(user.id, credential, label)
       setRegistering(false)
 
-      await runVerifications(registerResult.credentialId, label)
+      await new Promise((r) => setTimeout(r, 800))
+
+      await runVerifications(label)
     } catch (err) {
       setRegistering(false)
       setVerifying(false)
@@ -121,19 +124,21 @@ export default function Profile() {
     }
   }
 
-  async function runVerifications(credentialId, label) {
+  async function runVerifications(label) {
     setVerifying(true)
     setVerifyProgress(0)
     setVerifyTotal(VERIFICATIONS_PER_FINGER)
-    setVerifyError('')
+    setVerifyOk(0)
+    setVerifyFail(0)
     setScanHint('')
 
-    let consecutiveFailures = 0
+    let collected = 0
+    let retries = 0
+    const MAX_RETRIES = 30
 
-    for (let i = 0; i < VERIFICATIONS_PER_FINGER; i++) {
-      if (i > 0) await new Promise((r) => setTimeout(r, 600))
-
-      setScanHint(SCAN_POSITIONS[i] || `Leitura ${i + 1} de ${VERIFICATIONS_PER_FINGER}`)
+    while (collected < VERIFICATIONS_PER_FINGER && retries < MAX_RETRIES) {
+      await new Promise((r) => setTimeout(r, 500))
+      setScanHint(SCAN_POSITIONS[collected] || `Leitura ${collected + 1} de ${VERIFICATIONS_PER_FINGER}`)
 
       try {
         const challengeRes = await api.webauthnLoginDiscoverOptions()
@@ -143,13 +148,17 @@ export default function Profile() {
           rpId: challengeRes.rpId,
           timeout: 60000,
           userVerification: 'required',
-          allowCredentials: [{
-            type: 'public-key',
-            id: base64urlToBuffer(credentialId),
-          }],
         }
 
-        const assertion = await navigator.credentials.get({ publicKey })
+        let assertion
+        try {
+          assertion = await navigator.credentials.get({ publicKey })
+        } catch (getErr) {
+          console.error('credentials.get failed:', getErr.message)
+          retries++
+          setVerifyFail((f) => f + 1)
+          continue
+        }
 
         const credPayload = {
           id: assertion.id,
@@ -164,31 +173,32 @@ export default function Profile() {
           },
         }
 
-        await api.webauthnVerify(credPayload)
-        setVerifyProgress(i + 1)
-        consecutiveFailures = 0
-      } catch (err) {
-        console.error(`Verification ${i + 1} failed:`, err.message)
-        consecutiveFailures++
-
-        if (consecutiveFailures >= 3) {
-          setVerifyError('Muitas falhas consecutivas. Certifique-se de usar o mesmo dedo cadastrado e que o leitor esta limpo.')
-          setVerifying(false)
-          await api.webauthnRemoveCredential(credentialId)
-          refreshCredentials()
-          return
+        try {
+          await api.webauthnVerify(credPayload)
+          collected++
+          setVerifyProgress(collected)
+          setVerifyOk((o) => o + 1)
+        } catch (verifyErr) {
+          console.error('Server verify failed:', verifyErr.message)
+          retries++
+          setVerifyFail((f) => f + 1)
         }
-
-        i-- // retry same position
-        await new Promise((r) => setTimeout(r, 1000))
+      } catch (err) {
+        console.error('Verification round error:', err.message)
+        retries++
+        setVerifyFail((f) => f + 1)
       }
     }
 
     setVerifying(false)
-    setVerifyProgress(0)
-    setVerifyTotal(0)
+
+    if (collected >= VERIFICATIONS_PER_FINGER) {
+      setMessage(`Digital "${label}" cadastrada com sucesso! ${collected} leituras validadas.`)
+    } else {
+      setError(`Coleta parcial: ${collected} de ${VERIFICATIONS_PER_FINGER} leituras concluidas. Recomendamos recadastrar o dedo para melhor precisao.`)
+    }
+
     setScanHint('')
-    setMessage(`Digital "${label}" cadastrada e validada com sucesso!`)
     refreshCredentials()
   }
 
@@ -305,12 +315,6 @@ export default function Profile() {
               <p style={{ fontSize: '.8125rem', color: 'var(--text-muted)' }}>Verificando...</p>
             ) : (
               <div>
-                {verifyError && (
-                  <div className="alert alert-error" style={{ marginBottom: 12 }}>
-                    <AlertTriangle size={14} style={{ flexShrink: 0 }} /> {verifyError}
-                  </div>
-                )}
-
                 {verifying && (
                   <div className="biometric-verify-progress">
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
@@ -325,8 +329,14 @@ export default function Profile() {
                         style={{ width: `${Math.round((verifyProgress / verifyTotal) * 100)}%` }}
                       />
                     </div>
-                    <div style={{ fontSize: '.75rem', color: 'var(--text-muted)', marginTop: 8, fontStyle: 'italic' }}>
-                      {scanHint}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, fontSize: '.75rem' }}>
+                      <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                        {scanHint}
+                      </span>
+                      <span style={{ color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                        <span style={{ color: 'var(--success)' }}>&#10003; {verifyOk}</span>
+                        {verifyFail > 0 && <span style={{ color: 'var(--danger)', marginLeft: 10 }}>&#10007; {verifyFail}</span>}
+                      </span>
                     </div>
                     <div style={{ fontSize: '.75rem', color: 'var(--text-muted)', marginTop: 2 }}>
                       Leitura {verifyProgress} de {verifyTotal}
