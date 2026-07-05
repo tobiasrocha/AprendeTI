@@ -3,7 +3,7 @@ import { api } from '../api'
 import { Upload, X, FileText, FolderTree } from 'lucide-react'
 
 const FORMAT_LABELS = {
-  pdf: 'PDF', html: 'HTML', docx: 'DOCX', md: 'Markdown', txt: 'Texto',
+  pdf: 'PDF', html: 'HTML', docx: 'DOCX', md: 'Markdown', txt: 'Texto', image: 'Imagem',
 }
 
 export default function BatchUpload({ onClose, onSuccess }) {
@@ -23,7 +23,7 @@ export default function BatchUpload({ onClose, onSuccess }) {
 
   function detectFormat(filename) {
     const ext = filename.split('.').pop().toLowerCase()
-    const map = { pdf: 'pdf', html: 'html', htm: 'html', docx: 'docx', md: 'md', txt: 'txt' }
+    const map = { pdf: 'pdf', html: 'html', htm: 'html', docx: 'docx', md: 'md', txt: 'txt', jpg: 'image', jpeg: 'image', png: 'image' }
     return map[ext] || 'txt'
   }
 
@@ -97,13 +97,13 @@ export default function BatchUpload({ onClose, onSuccess }) {
             Arraste arquivos ou clique para selecionar
           </p>
           <p style={{ fontSize: '.75rem', color: 'var(--text-muted)', marginTop: 4 }}>
-            PDF, HTML, DOCX, MD, TXT &bull; Max 50MB cada
+            PDF, HTML, DOCX, MD, TXT, JPG, PNG &bull; Max 50MB cada
           </p>
           <input
             ref={inputRef}
             type="file"
             multiple
-            accept=".pdf,.html,.htm,.docx,.md,.txt"
+            accept=".pdf,.html,.htm,.docx,.md,.txt,.jpg,.jpeg,.png"
             style={{ display: 'none' }}
             onChange={handleFiles}
           />

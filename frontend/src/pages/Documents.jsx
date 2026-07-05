@@ -132,7 +132,7 @@ export default function Documents() {
             )}
           </td>
           <td>
-            <span className={`badge badge-${doc.format === 'md' ? 'blue' : doc.format === 'pdf' ? 'red' : doc.format === 'docx' ? 'purple' : doc.format === 'html' ? 'green' : 'yellow'}`}>
+            <span className={`badge badge-${doc.format === 'md' ? 'blue' : doc.format === 'pdf' ? 'red' : doc.format === 'docx' ? 'purple' : doc.format === 'html' ? 'green' : doc.format === 'image' ? 'orange' : 'yellow'}`}>
               {doc.format.toUpperCase()}
             </span>
           </td>
@@ -210,6 +210,7 @@ export default function Documents() {
             onChange={(e) => setFormatFilter(e.target.value)}
           >
             <option value="">Todos formatos</option>
+            <option value="image">Imagem</option>
             <option value="md">Markdown</option>
             <option value="html">HTML</option>
             <option value="pdf">PDF</option>

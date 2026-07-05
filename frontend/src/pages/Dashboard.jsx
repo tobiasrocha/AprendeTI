@@ -84,7 +84,7 @@ export default function Dashboard() {
             <Link key={doc.id} to={`/documents/${doc.id}`} className="card" style={{ textDecoration: 'none', color: 'inherit' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
                 <h3 style={{ fontSize: '.95rem', fontWeight: 600, marginBottom: 6, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{doc.title}</h3>
-                <span className={`badge badge-${doc.format === 'md' ? 'blue' : doc.format === 'pdf' ? 'red' : doc.format === 'docx' ? 'purple' : doc.format === 'html' ? 'green' : 'yellow'}`}>
+                <span className={`badge badge-${doc.format === 'md' ? 'blue' : doc.format === 'pdf' ? 'red' : doc.format === 'docx' ? 'purple' : doc.format === 'html' ? 'green' : doc.format === 'image' ? 'orange' : 'yellow'}`}>
                   {doc.format.toUpperCase()}
                 </span>
               </div>

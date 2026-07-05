@@ -52,7 +52,7 @@ export default function Login() {
         challenge: base64urlToBuffer(challengeRes.challenge),
         rpId: challengeRes.rpId,
         timeout: 60000,
-        userVerification: 'preferred',
+        userVerification: 'required',
       }
 
       let assertion

@@ -26,12 +26,12 @@ const upload = multer({
   storage,
   limits: { fileSize: 50 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
-    const allowed = ['.pdf', '.html', '.htm', '.docx', '.md', '.txt']
+    const allowed = ['.pdf', '.html', '.htm', '.docx', '.md', '.txt', '.jpg', '.jpeg', '.png']
     const ext = path.extname(file.originalname).toLowerCase()
     if (allowed.includes(ext)) {
       cb(null, true)
     } else {
-      cb(new Error('Formato não suportado. Use: PDF, HTML, DOCX, MD, TXT'))
+      cb(new Error('Formato não suportado. Use: PDF, HTML, DOCX, MD, TXT, JPG, PNG'))
     }
   },
 })
@@ -46,6 +46,9 @@ const FORMAT_MAP = {
   '.docx': 'docx',
   '.md': 'md',
   '.txt': 'txt',
+  '.jpg': 'image',
+  '.jpeg': 'image',
+  '.png': 'image',
 }
 
 function detectFormat(filename) {
@@ -53,13 +56,23 @@ function detectFormat(filename) {
   return FORMAT_MAP[ext] || 'txt'
 }
 
-function getMimeType(format) {
+function getMimeType(format, filename) {
+  if (filename) {
+    const ext = path.extname(filename).toLowerCase()
+    const extMimes = {
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.png': 'image/png',
+    }
+    if (extMimes[ext]) return extMimes[ext]
+  }
   const mimes = {
     pdf: 'application/pdf',
     html: 'text/html',
     docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     md: 'text/markdown',
     txt: 'text/plain',
+    image: 'application/octet-stream',
   }
   return mimes[format] || 'application/octet-stream'
 }
@@ -423,7 +436,7 @@ router.get('/:id/download', (req, res) => {
   if (doc.filename) {
     const filePath = path.join(UPLOAD_DIR, doc.filename)
     if (fs.existsSync(filePath)) {
-      res.setHeader('Content-Type', getMimeType(doc.format))
+      res.setHeader('Content-Type', getMimeType(doc.format, doc.filename || doc.original_name))
       res.setHeader('Content-Disposition', contentDisposition('inline', doc.original_name || doc.title))
       return fs.createReadStream(filePath).pipe(res)
     }
@@ -461,6 +474,9 @@ router.get('/:id/render', (req, res) => {
     html = `<pre style="white-space:pre-wrap;font-family:monospace;background:#f1f5f9;padding:16px;border-radius:8px;">${escapeHtml(doc.content || '')}</pre>`
   } else if (doc.filename) {
     const filePath = path.join(UPLOAD_DIR, doc.filename)
+    if (fs.existsSync(filePath) && doc.format === 'image') {
+      return res.json({ html: `<img src="/api/documents/${doc.id}/download" alt="${doc.title}" style="max-width:100%;border-radius:8px;cursor:pointer" onclick="this.requestFullscreen()" />`, format: 'image', isImage: true })
+    }
     if (fs.existsSync(filePath) && doc.format === 'pdf') {
       return res.json({ html: `<p><a href="/api/documents/${doc.id}/download" target="_blank">Visualizar PDF</a></p>`, format: 'pdf' })
     }

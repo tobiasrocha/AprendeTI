@@ -9,6 +9,7 @@ const FORMATS = [
   { value: 'txt', label: 'Texto (TXT)' },
   { value: 'pdf', label: 'PDF (upload)' },
   { value: 'docx', label: 'DOCX (upload)' },
+  { value: 'image', label: 'Imagem (upload: JPG, PNG)' },
 ]
 
 export default function DocumentEditor() {
@@ -70,7 +71,7 @@ export default function DocumentEditor() {
     }
   }
 
-  const isUploadOnly = format === 'pdf' || format === 'docx'
+  const isUploadOnly = format === 'pdf' || format === 'docx' || format === 'image'
 
   return (
     <div>
@@ -136,7 +137,7 @@ export default function DocumentEditor() {
           <input
             type="file"
             className="form-input"
-            accept=".pdf,.html,.htm,.docx,.md,.txt"
+            accept=".pdf,.html,.htm,.docx,.md,.txt,.jpg,.jpeg,.png"
             onChange={(e) => setFile(e.target.files[0])}
           />
           {isEdit && !file && (

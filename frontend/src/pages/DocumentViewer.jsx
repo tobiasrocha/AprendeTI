@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { api } from '../api'
-import { ArrowLeft, Pencil, Trash2, Download, FileText, GitBranch, ChevronRight, Maximize, Minimize, Share2, X } from 'lucide-react'
+import { ArrowLeft, Pencil, Trash2, Download, FileText, GitBranch, ChevronRight, Maximize, Minimize, Share2, X, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 
 export default function DocumentViewer() {
@@ -14,6 +14,7 @@ export default function DocumentViewer() {
   const [fullscreen, setFullscreen] = useState(false)
   const [showChildren, setShowChildren] = useState(false)
   const [pdfUrl, setPdfUrl] = useState(null)
+  const [imageUrl, setImageUrl] = useState(null)
   const [showShareModal, setShowShareModal] = useState(false)
   const [shares, setShares] = useState([])
   const [groupShares, setGroupShares] = useState([])
@@ -22,25 +23,31 @@ export default function DocumentViewer() {
   const [selectedUserId, setSelectedUserId] = useState('')
   const [selectedGroupId, setSelectedGroupId] = useState('')
   const [shareError, setShareError] = useState('')
+  const [lightboxOpen, setLightboxOpen] = useState(false)
+  const [zoom, setZoom] = useState(1)
+  const [pan, setPan] = useState({ x: 0, y: 0 })
+  const [isDragging, setIsDragging] = useState(false)
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
+  const imageRef = useRef(null)
+  const lightboxRef = useRef(null)
   const renderRef = useRef(null)
 
   useEffect(() => {
     api.getDocument(id).then((d) => {
       setDoc(d)
       if (d.format === 'pdf' && d.filename) {
-        loadPdfInline(id)
+        loadBinaryInline(id, setPdfUrl)
+      } else if (d.format === 'image' && d.filename) {
+        loadBinaryInline(id, setImageUrl)
       }
     })
     api.renderDocument(id).then((d) => {
       setHtml(d.html)
       setLoading(false)
-      if (d.format === 'pdf') {
-        loadPdfInline(id)
-      }
     })
   }, [id])
 
-  async function loadPdfInline(docId) {
+  async function loadBinaryInline(docId, setter) {
     try {
       const token = localStorage.getItem('token')
       const res = await fetch(`/api/documents/${docId}/download`, {
@@ -48,11 +55,66 @@ export default function DocumentViewer() {
       })
       const blob = await res.blob()
       const url = URL.createObjectURL(blob)
-      setPdfUrl(url)
+      setter(url)
     } catch (_) {}
   }
 
+  function openLightbox() {
+    setLightboxOpen(true)
+    setZoom(1)
+    setPan({ x: 0, y: 0 })
+  }
+
+  function closeLightbox() {
+    setLightboxOpen(false)
+    setZoom(1)
+    setPan({ x: 0, y: 0 })
+  }
+
+  function handleZoomIn() { setZoom((z) => Math.min(z + 0.25, 5)) }
+  function handleZoomOut() { setZoom((z) => Math.max(z - 0.25, 0.25)) }
+  function handleZoomReset() { setZoom(1); setPan({ x: 0, y: 0 }) }
+
+  function handleWheel(e) {
+    e.preventDefault()
+    const delta = e.deltaY > 0 ? -0.1 : 0.1
+    setZoom((z) => Math.max(0.25, Math.min(5, z + delta)))
+  }
+
+  function handleMouseDown(e) {
+    if (zoom <= 1) return
+    setIsDragging(true)
+    setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y })
+  }
+
+  function handleMouseMove(e) {
+    if (!isDragging || zoom <= 1) return
+    setPan({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y })
+  }
+
+  function handleMouseUp() { setIsDragging(false) }
+
+  useEffect(() => {
+    function handleKeyDown(e) {
+      if (e.key === 'Escape' && lightboxOpen) closeLightbox()
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [lightboxOpen])
+
+  useEffect(() => {
+    return () => {
+      if (pdfUrl) URL.revokeObjectURL(pdfUrl)
+      if (imageUrl) URL.revokeObjectURL(imageUrl)
+    }
+  }, [])
+
   function handleRenderClick(e) {
+    const img = e.target.closest('img')
+    if (img && doc && doc.format === 'image') {
+      openLightbox()
+      return
+    }
     const link = e.target.closest('a')
     if (!link) return
     const href = link.getAttribute('href')
@@ -136,14 +198,18 @@ export default function DocumentViewer() {
 
   async function handleDownload() {
     try {
-      await api.downloadDocument(id, `${doc.title}.${doc.format}`)
+      await api.downloadDocument(id, `${doc.title}.${doc.format === 'image' ? 'png' : doc.format}`)
     } catch (e) {
       alert('Erro ao baixar: ' + e.message)
     }
   }
 
+  const formatBadgeClass = doc ? `badge-${doc.format === 'md' ? 'blue' : doc.format === 'pdf' ? 'red' : doc.format === 'docx' ? 'purple' : doc.format === 'html' ? 'green' : doc.format === 'image' ? 'orange' : 'yellow'}` : ''
+
   if (loading) return <div className="page-loader">Carregando...</div>
   if (!doc) return <div className="page-loader">Documento não encontrado</div>
+
+  const isImage = doc.format === 'image' && imageUrl
 
   return (
     <div>
@@ -184,7 +250,7 @@ export default function DocumentViewer() {
         <>
           <div className="doc-meta">
             <span>
-              <span className={`badge badge-${doc.format === 'md' ? 'blue' : doc.format === 'pdf' ? 'red' : doc.format === 'docx' ? 'purple' : doc.format === 'html' ? 'green' : 'yellow'}`}>
+              <span className={`badge ${formatBadgeClass}`}>
                 {doc.format.toUpperCase()}
               </span>
             </span>
@@ -240,7 +306,7 @@ export default function DocumentViewer() {
                     onMouseOver={(e) => e.currentTarget.style.borderColor = 'var(--primary)'}
                     onMouseOut={(e) => e.currentTarget.style.borderColor = 'var(--border)'}
                   >
-                    <span className={`badge badge-${child.format === 'md' ? 'blue' : child.format === 'pdf' ? 'red' : child.format === 'docx' ? 'purple' : child.format === 'html' ? 'green' : 'yellow'}`}>
+                    <span className={`badge badge-${child.format === 'md' ? 'blue' : child.format === 'pdf' ? 'red' : child.format === 'docx' ? 'purple' : child.format === 'html' ? 'green' : child.format === 'image' ? 'orange' : 'yellow'}`}>
                       {child.format.toUpperCase()}
                     </span>
                     <span style={{ flex: 1 }}>{child.title}</span>
@@ -270,10 +336,15 @@ export default function DocumentViewer() {
         </>
       )}
 
-      {pdfUrl && doc.format === 'pdf' ? (
+      {isImage ? (
+        <div className="image-viewer-inline" onClick={openLightbox}>
+          <img src={imageUrl} alt={doc.title} />
+          <div className="image-viewer-hint">Clique para ampliar</div>
+        </div>
+      ) : pdfUrl && doc.format === 'pdf' ? (
         <iframe
           src={pdfUrl}
-          style={{ width: '100%', height: '80vh', border: '1px solid var(--border)', borderRadius: 8 }}
+          style={{ width: '100%', height: fullscreen ? '100vh' : '80vh', border: '1px solid var(--border)', borderRadius: 8 }}
           title={doc.title}
         />
       ) : (
@@ -283,6 +354,51 @@ export default function DocumentViewer() {
           onClick={handleRenderClick}
           dangerouslySetInnerHTML={{ __html: html }}
         />
+      )}
+
+      {lightboxOpen && isImage && (
+        <div
+          className="lightbox-overlay"
+          ref={lightboxRef}
+          onClick={(e) => { if (e.target === lightboxRef.current) closeLightbox() }}
+          onWheel={handleWheel}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseUp}
+          style={{ cursor: zoom > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default' }}
+        >
+          <button className="lightbox-close" onClick={closeLightbox}>
+            <X size={24} />
+          </button>
+
+          <div className="lightbox-toolbar">
+            <button className="lightbox-btn" onClick={handleZoomIn} title="Ampliar">
+              <ZoomIn size={18} />
+            </button>
+            <button className="lightbox-btn" onClick={handleZoomOut} title="Reduzir">
+              <ZoomOut size={18} />
+            </button>
+            <button className="lightbox-btn" onClick={handleZoomReset} title="Original">
+              <RotateCcw size={18} />
+            </button>
+            <span className="lightbox-zoom-level">{Math.round(zoom * 100)}%</span>
+          </div>
+
+          <div style={{
+            transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+            transformOrigin: 'center center',
+            transition: isDragging ? 'none' : 'transform .15s ease-out',
+          }}>
+            <img
+              ref={imageRef}
+              src={imageUrl}
+              alt={doc.title}
+              onMouseDown={handleMouseDown}
+              draggable={false}
+              style={{ maxWidth: '90vw', maxHeight: '85vh', objectFit: 'contain', userSelect: 'none' }}
+            />
+          </div>
+        </div>
       )}
 
       {showShareModal && (

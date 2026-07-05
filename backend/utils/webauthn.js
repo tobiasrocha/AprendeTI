@@ -66,6 +66,27 @@ function coseKeyToPem(coseKey) {
   throw new Error(`Unsupported key type: ${kty}`)
 }
 
+function rawEcdsaSigToDer(sigBuf) {
+  const len = sigBuf.length / 2
+  const r = sigBuf.subarray(0, len)
+  const s = sigBuf.subarray(len)
+
+  function encodeInt(buf) {
+    while (buf.length > 1 && buf[0] === 0) buf = buf.subarray(1)
+    if (buf[0] & 0x80) buf = Buffer.concat([Buffer.alloc(1, 0), buf])
+    const hdr = Buffer.alloc(2)
+    hdr[0] = 0x02; hdr[1] = buf.length
+    return Buffer.concat([hdr, buf])
+  }
+
+  const rEnc = encodeInt(r)
+  const sEnc = encodeInt(s)
+  const inner = Buffer.concat([rEnc, sEnc])
+  const der = Buffer.alloc(2)
+  der[0] = 0x30; der[1] = inner.length
+  return Buffer.concat([der, inner])
+}
+
 export function verifyAssertion(credential, clientDataJSON, authenticatorData, signature) {
   const clientDataHash = crypto.createHash('sha256').update(Buffer.from(clientDataJSON, 'base64url')).digest()
   const authDataBuf = Buffer.from(authenticatorData, 'base64url')
@@ -74,18 +95,16 @@ export function verifyAssertion(credential, clientDataJSON, authenticatorData, s
 
   const publicKey = crypto.createPublicKey({ key: credential.public_key_pem, format: 'pem' })
 
-  let ok = false
   try {
     if (publicKey.asymmetricKeyType === 'ec') {
-      ok = crypto.verify(null, verifyData, publicKey, sigBuf)
-    } else {
-      ok = crypto.verify('sha256', verifyData, publicKey, sigBuf)
+      const derSig = rawEcdsaSigToDer(sigBuf)
+      return crypto.verify(null, verifyData, publicKey, derSig)
     }
+    return crypto.verify('sha256', verifyData, publicKey, sigBuf)
   } catch (e) {
+    console.error('verifyAssertion failed:', e.message)
     return false
   }
-
-  return ok
 }
 
 export function base64urlToBuffer(str) {

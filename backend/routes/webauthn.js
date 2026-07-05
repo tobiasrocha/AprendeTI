@@ -123,10 +123,9 @@ router.post('/login', (req, res) => {
 
     if (!ok) return res.status(401).json({ error: 'Falha na verificação biometrica' })
 
-    const newCount = response.userHandle ? 1 : stored.sign_count + 1
     getDb()
-      .prepare('UPDATE webauthn_credentials SET sign_count = ? WHERE id = ?')
-      .run(newCount, stored.id)
+      .prepare('UPDATE webauthn_credentials SET sign_count = sign_count + 1 WHERE id = ?')
+      .run(stored.id)
 
     const dbUser = getDb()
       .prepare('SELECT id, username, email, role FROM users WHERE id = ?')
@@ -176,6 +175,10 @@ router.post('/login-discover', (req, res) => {
     )
 
     if (!ok) return res.status(401).json({ error: 'Falha na verificação biometrica' })
+
+    getDb()
+      .prepare('UPDATE webauthn_credentials SET sign_count = sign_count + 1 WHERE id = ?')
+      .run(stored.id)
 
     const dbUser = getDb()
       .prepare('SELECT id, username, email, role FROM users WHERE id = ? AND active = 1')
