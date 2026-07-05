@@ -131,6 +131,38 @@ export function initDb() {
     );
   `)
 
+  const tableSQL = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='documents'").get()
+  if (tableSQL && !tableSQL.sql.includes("'image'")) {
+    db.exec(`
+      PRAGMA foreign_keys = OFF;
+      BEGIN TRANSACTION;
+      CREATE TABLE documents_migrated (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL,
+        description TEXT DEFAULT '',
+        content TEXT DEFAULT '',
+        format TEXT NOT NULL DEFAULT 'md' CHECK(format IN ('pdf','html','docx','md','txt','image')),
+        filename TEXT,
+        original_name TEXT,
+        file_size INTEGER DEFAULT 0,
+        user_id INTEGER NOT NULL,
+        category_id INTEGER,
+        parent_id INTEGER,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL,
+        FOREIGN KEY (parent_id) REFERENCES documents(id) ON DELETE SET NULL
+      );
+      INSERT INTO documents_migrated SELECT * FROM documents;
+      DROP TABLE documents;
+      ALTER TABLE documents_migrated RENAME TO documents;
+      COMMIT;
+      PRAGMA foreign_keys = ON;
+    `)
+    console.log('Tabela documents migrada para incluir formato image')
+  }
+
   for (const col of ['category_id', 'parent_id']) {
     try { db.exec(`ALTER TABLE documents ADD COLUMN ${col} INTEGER REFERENCES ${col === 'parent_id' ? 'documents(id) ON DELETE SET NULL' : 'categories(id) ON DELETE SET NULL'}`) } catch (_) {}
   }
@@ -167,13 +199,14 @@ export function initDb() {
 
   const fmtCount = db.prepare('SELECT COUNT(*) as c FROM formats').get().c
   if (fmtCount === 0) {
-    const fmts = [
-      ['Markdown', 'Documentos em formato Markdown', 'md,markdown'],
-      ['HTML', 'Documentos em formato HTML', 'html,htm'],
-      ['PDF', 'Documentos PDF', 'pdf'],
-      ['DOCX', 'Documentos Microsoft Word', 'docx'],
-      ['Texto', 'Documentos de texto puro', 'txt'],
-    ]
+      const fmts = [
+        ['Markdown', 'Documentos em formato Markdown', 'md,markdown'],
+        ['HTML', 'Documentos em formato HTML', 'html,htm'],
+        ['PDF', 'Documentos PDF', 'pdf'],
+        ['DOCX', 'Documentos Microsoft Word', 'docx'],
+        ['Texto', 'Documentos de texto puro', 'txt'],
+        ['Imagem', 'Imagens JPG e PNG', 'jpg,jpeg,png'],
+      ]
     const insertFmt = db.prepare('INSERT INTO formats (name, description, extensions) VALUES (?, ?, ?)')
     for (const f of fmts) insertFmt.run(...f)
     console.log('Formatos padrao criados')

@@ -125,6 +125,9 @@ export default function Login() {
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               placeholder="Seu usuário"
+              autoCapitalize="none"
+              autoCorrect="off"
+              autoComplete="username"
               autoFocus
               required
             />
