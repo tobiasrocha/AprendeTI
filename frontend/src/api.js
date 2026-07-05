@@ -18,7 +18,7 @@ async function request(path, options = {}) {
 
   const res = await fetch(`${BASE}${path}`, { ...options, headers })
 
-  if (res.status === 401) {
+  if (res.status === 401 && token) {
     localStorage.removeItem('token')
     localStorage.removeItem('user')
     window.location.href = '/login'
