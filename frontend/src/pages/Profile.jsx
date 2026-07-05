@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { api } from '../api'
-import { KeyRound, User, Fingerprint, ShieldCheck, Trash2, Plus, Loader, Check, X, AlertTriangle } from 'lucide-react'
+import { KeyRound, User, Fingerprint, ShieldCheck, Trash2, Plus, Loader, Check, AlertTriangle } from 'lucide-react'
 
 function bufferToBase64url(buf) {
   return btoa(String.fromCharCode(...new Uint8Array(buf)))
@@ -81,6 +81,7 @@ export default function Profile() {
       try {
         cred = await navigator.credentials.create({ publicKey: options })
       } catch (webAuthnErr) {
+        console.error('Create error:', webAuthnErr)
         setRegistering(false)
         setError('Coleta cancelada ou falhou. Tente novamente.')
         return
@@ -98,38 +99,46 @@ export default function Profile() {
       const registerResult = await api.webauthnRegister(user.id, credential, label)
       setRegistering(false)
 
-      await runVerifications(credential.id, registerResult.credentialId, label)
+      await runVerifications(registerResult.credentialId, label, credential.id)
     } catch (err) {
       setRegistering(false)
+      setVerifying(false)
       setError(err.message || 'Falha ao registrar biometria')
     }
   }
 
-  async function runVerifications(credentialRawId, credentialId, label) {
+  async function runVerifications(credentialId, label, rawCredentialId) {
     setVerifying(true)
     setVerifyProgress(0)
     setVerifyTotal(VERIFICATIONS_PER_FINGER)
     setVerifyError('')
 
-    let failures = 0
+    let consecutiveFailures = 0
 
     for (let i = 0; i < VERIFICATIONS_PER_FINGER; i++) {
+      if (i > 0) await new Promise((r) => setTimeout(r, 700))
+
       try {
         const challengeRes = await api.webauthnLoginDiscoverOptions()
+
         const publicKey = {
           challenge: base64urlToBuffer(challengeRes.challenge),
           rpId: challengeRes.rpId,
           timeout: 60000,
           userVerification: 'required',
+          allowCredentials: [{
+            type: 'public-key',
+            id: base64urlToBuffer(credentialId),
+          }],
         }
 
         const assertion = await navigator.credentials.get({ publicKey })
 
-        if (assertion.id !== credentialId) {
-          failures++
-          setVerifyError(`Digital diferente detectada na verificacao ${i + 1}. Reinicie o cadastro.`)
+        const returnedId = assertion.id
+        if (returnedId !== credentialId && returnedId !== rawCredentialId) {
+          setVerifyError('Digital diferente detectada. O dedo usado nao corresponde ao cadastrado. Tente novamente com o mesmo dedo.')
           setVerifying(false)
-          await api.webauthnRemoveCredential(credentialRawId || credentialId)
+          await api.webauthnRemoveCredential(credentialId)
           refreshCredentials()
           return
         }
@@ -149,24 +158,28 @@ export default function Profile() {
 
         await api.webauthnVerify(credPayload)
         setVerifyProgress(i + 1)
+        consecutiveFailures = 0
       } catch (err) {
-        failures++
-        if (failures >= 3) {
-          setVerifyError(`Muitas falhas na verificacao. Remova o dedo e tente novamente.`)
+        console.error(`Verification ${i + 1} failed:`, err.message)
+        consecutiveFailures++
+
+        if (consecutiveFailures >= 3) {
+          setVerifyError(`Falha na verificacao. Certifique-se de usar o mesmo dedo e que o leitor esta limpo.`)
           setVerifying(false)
-          await api.webauthnRemoveCredential(credentialRawId || credentialId)
+          await api.webauthnRemoveCredential(credentialId)
           refreshCredentials()
           return
         }
+
         i-- // retry this verification
-        await new Promise((r) => setTimeout(r, 800))
+        await new Promise((r) => setTimeout(r, 1000))
       }
     }
 
     setVerifying(false)
     setVerifyProgress(0)
     setVerifyTotal(0)
-    setMessage(`Digital "${label}" cadastrada com sucesso!`)
+    setMessage(`Digital "${label}" cadastrada e validada com sucesso!`)
     refreshCredentials()
   }
 
@@ -304,7 +317,7 @@ export default function Profile() {
                       />
                     </div>
                     <div style={{ fontSize: '.75rem', color: 'var(--text-muted)', marginTop: 6 }}>
-                      Verificacao {verifyProgress} de {verifyTotal}
+                      Verificacao {verifyProgress} de {verifyTotal} — posicione o mesmo dedo no leitor
                     </div>
                   </div>
                 )}
