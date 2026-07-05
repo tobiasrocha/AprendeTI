@@ -10,7 +10,8 @@ function bufferToBase64url(buf) {
 
 function base64urlToBuffer(str) {
   const base64 = str.replace(/-/g, '+').replace(/_/g, '/')
-  const raw = atob(base64)
+  const padded = base64 + '==='.slice(0, (4 - base64.length % 4) % 4)
+  const raw = atob(padded)
   const buf = new Uint8Array(raw.length)
   for (let i = 0; i < raw.length; i++) buf[i] = raw.charCodeAt(i)
   return buf.buffer
