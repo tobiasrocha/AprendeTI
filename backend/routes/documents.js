@@ -467,11 +467,14 @@ router.get('/:id/render', (req, res) => {
   let html = ''
 
   if (doc.format === 'md') {
-    html = marked.parse(doc.content || '', { breaks: true, gfm: true })
+    html = marked.parse(doc.content || '', {
+      breaks: false,
+      gfm: true,
+    })
   } else if (doc.format === 'html') {
     html = doc.content || ''
   } else if (doc.format === 'txt') {
-    html = `<pre style="white-space:pre-wrap;font-family:monospace;background:#f1f5f9;padding:16px;border-radius:8px;">${escapeHtml(doc.content || '')}</pre>`
+    html = `<pre class="doc-pre">${escapeHtml(doc.content || '')}</pre>`
   } else if (doc.filename) {
     const filePath = path.join(UPLOAD_DIR, doc.filename)
     if (fs.existsSync(filePath) && doc.format === 'image') {
@@ -485,12 +488,29 @@ router.get('/:id/render', (req, res) => {
     }
   }
 
+  const allowed = sanitizeHtml.defaults.allowedTags.concat([
+    'img', 'h1', 'h2', 'figure', 'figcaption', 'video', 'source', 'audio',
+    'pre', 'code', 'span', 'div', 'br', 'hr',
+    'table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td', 'colgroup', 'col', 'caption',
+    'details', 'summary', 'dl', 'dt', 'dd',
+    'kbd', 'mark', 'del', 'ins', 's', 'sup', 'sub', 'small',
+    'input', 'label', 'abbr', 'dfn', 'var', 'samp',
+  ])
+
   html = sanitizeHtml(html, {
-    allowedTags: sanitizeHtml.defaults.allowedTags.concat(['img', 'h1', 'h2', 'span', 'pre']),
-    allowedAttributes: { '*': ['class', 'style', 'href', 'src', 'alt', 'target'] },
+    allowedTags: allowed,
+    allowedAttributes: {
+      '*': ['id', 'class', 'style', 'href', 'src', 'alt', 'target',
+             'title', 'lang', 'dir', 'width', 'height', 'colspan',
+             'rowspan', 'scope', 'start', 'reversed', 'type',
+             'checked', 'disabled', 'readonly', 'open', 'controls',
+             'autoplay', 'loop', 'muted', 'poster', 'loading'],
+    },
   })
 
-  res.json({ html, format: doc.format })
+  const wrapped = `<div class="doc-content">${html}</div>`
+
+  res.json({ html: wrapped, format: doc.format })
 })
 
 function escapeHtml(str) {

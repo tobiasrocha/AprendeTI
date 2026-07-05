@@ -24,6 +24,7 @@ export default function DocumentViewer() {
   const [selectedGroupId, setSelectedGroupId] = useState('')
   const [shareError, setShareError] = useState('')
   const [lightboxOpen, setLightboxOpen] = useState(false)
+  const [lightboxSrc, setLightboxSrc] = useState('')
   const [zoom, setZoom] = useState(1)
   const [pan, setPan] = useState({ x: 0, y: 0 })
   const [isDragging, setIsDragging] = useState(false)
@@ -59,7 +60,8 @@ export default function DocumentViewer() {
     } catch (_) {}
   }
 
-  function openLightbox() {
+  function openLightbox(src) {
+    setLightboxSrc(src || imageUrl)
     setLightboxOpen(true)
     setZoom(1)
     setPan({ x: 0, y: 0 })
@@ -67,6 +69,7 @@ export default function DocumentViewer() {
 
   function closeLightbox() {
     setLightboxOpen(false)
+    setLightboxSrc('')
     setZoom(1)
     setPan({ x: 0, y: 0 })
   }
@@ -111,8 +114,8 @@ export default function DocumentViewer() {
 
   function handleRenderClick(e) {
     const img = e.target.closest('img')
-    if (img && doc && doc.format === 'image') {
-      openLightbox()
+    if (img) {
+      openLightbox(img.src)
       return
     }
     const link = e.target.closest('a')
@@ -337,7 +340,7 @@ export default function DocumentViewer() {
       )}
 
       {isImage ? (
-        <div className="image-viewer-inline" onClick={openLightbox}>
+        <div className="image-viewer-inline" onClick={() => openLightbox(imageUrl)}>
           <img src={imageUrl} alt={doc.title} />
           <div className="image-viewer-hint">Clique para ampliar</div>
         </div>
@@ -356,7 +359,7 @@ export default function DocumentViewer() {
         />
       )}
 
-      {lightboxOpen && isImage && (
+      {lightboxOpen && lightboxSrc && (
         <div
           className="lightbox-overlay"
           ref={lightboxRef}
@@ -391,7 +394,7 @@ export default function DocumentViewer() {
           }}>
             <img
               ref={imageRef}
-              src={imageUrl}
+              src={lightboxSrc}
               alt={doc.title}
               onMouseDown={handleMouseDown}
               draggable={false}
