@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { api } from '../api'
-import { KeyRound, User, Fingerprint, ShieldCheck } from 'lucide-react'
+import { KeyRound, User, Fingerprint, ShieldCheck, Trash2, Plus, Loader, Check, X, AlertTriangle } from 'lucide-react'
 
 function bufferToBase64url(buf) {
   return btoa(String.fromCharCode(...new Uint8Array(buf)))
@@ -20,6 +20,15 @@ function base64urlToBuffer(str) {
 const webAuthnSupported = typeof window !== 'undefined' &&
   typeof window.PublicKeyCredential !== 'undefined'
 
+const FINGER_LABELS = [
+  'Polegar direito', 'Indicador direito', 'Medio direito',
+  'Anelar direito', 'Minimo direito',
+  'Polegar esquerdo', 'Indicador esquerdo', 'Medio esquerdo',
+  'Anelar esquerdo', 'Minimo esquerdo',
+]
+
+const VERIFICATIONS_PER_FINGER = 10
+
 export default function Profile() {
   const { user } = useAuth()
   const [currentPassword, setCurrentPassword] = useState('')
@@ -28,20 +37,35 @@ export default function Profile() {
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
-  const [bioRegistered, setBioRegistered] = useState(false)
-  const [bioChecking, setBioChecking] = useState(true)
+  const [credentials, setCredentials] = useState([])
+  const [bioLoading, setBioLoading] = useState(true)
+  const [registering, setRegistering] = useState(false)
+  const [verifying, setVerifying] = useState(false)
+  const [verifyProgress, setVerifyProgress] = useState(0)
+  const [verifyTotal, setVerifyTotal] = useState(0)
+  const [verifyError, setVerifyError] = useState('')
+  const [currentFingerLabel, setCurrentFingerLabel] = useState('')
 
   useEffect(() => {
     if (!webAuthnSupported || !user) return
-    api.webauthnStatus(user.id)
-      .then((r) => setBioRegistered(r.registered))
+    api.webauthnCredentials(user.id)
+      .then(setCredentials)
       .catch(() => {})
-      .finally(() => setBioChecking(false))
+      .finally(() => setBioLoading(false))
   }, [user])
 
-  async function handleRegisterBiometric() {
+  async function startFingerRegistration() {
+    if (registering || verifying) return
     setError('')
     setMessage('')
+    setVerifyError('')
+
+    const takenLabels = new Set(credentials.map((c) => c.device_name))
+    const label = FINGER_LABELS.find((l) => !takenLabels.has(l)) || `Dedo ${credentials.length + 1}`
+
+    setCurrentFingerLabel(label)
+    setRegistering(true)
+
     try {
       const options = await api.webauthnRegisterOptions(user.id, user.username)
       options.challenge = base64urlToBuffer(options.challenge)
@@ -53,7 +77,14 @@ export default function Profile() {
         }))
       }
 
-      const cred = await navigator.credentials.create({ publicKey: options })
+      let cred
+      try {
+        cred = await navigator.credentials.create({ publicKey: options })
+      } catch (webAuthnErr) {
+        setRegistering(false)
+        setError('Coleta cancelada ou falhou. Tente novamente.')
+        return
+      }
 
       const credential = {
         id: cred.id,
@@ -64,20 +95,92 @@ export default function Profile() {
         },
       }
 
-      await api.webauthnRegister(user.id, credential)
-      setBioRegistered(true)
-      setMessage('Biometria cadastrada com sucesso!')
+      const registerResult = await api.webauthnRegister(user.id, credential, label)
+      setRegistering(false)
+
+      await runVerifications(credential.id, registerResult.credentialId, label)
     } catch (err) {
+      setRegistering(false)
       setError(err.message || 'Falha ao registrar biometria')
     }
   }
 
-  async function handleRemoveBiometric() {
-    if (!confirm('Remover o acesso biometrico?')) return
+  async function runVerifications(credentialRawId, credentialId, label) {
+    setVerifying(true)
+    setVerifyProgress(0)
+    setVerifyTotal(VERIFICATIONS_PER_FINGER)
+    setVerifyError('')
+
+    let failures = 0
+
+    for (let i = 0; i < VERIFICATIONS_PER_FINGER; i++) {
+      try {
+        const challengeRes = await api.webauthnLoginDiscoverOptions()
+        const publicKey = {
+          challenge: base64urlToBuffer(challengeRes.challenge),
+          rpId: challengeRes.rpId,
+          timeout: 60000,
+          userVerification: 'required',
+        }
+
+        const assertion = await navigator.credentials.get({ publicKey })
+
+        if (assertion.id !== credentialId) {
+          failures++
+          setVerifyError(`Digital diferente detectada na verificacao ${i + 1}. Reinicie o cadastro.`)
+          setVerifying(false)
+          await api.webauthnRemoveCredential(credentialRawId || credentialId)
+          refreshCredentials()
+          return
+        }
+
+        const credPayload = {
+          id: assertion.id,
+          type: assertion.type,
+          response: {
+            authenticatorData: bufferToBase64url(assertion.response.authenticatorData),
+            clientDataJSON: bufferToBase64url(assertion.response.clientDataJSON),
+            signature: bufferToBase64url(assertion.response.signature),
+            userHandle: assertion.response.userHandle
+              ? bufferToBase64url(assertion.response.userHandle)
+              : null,
+          },
+        }
+
+        await api.webauthnVerify(credPayload)
+        setVerifyProgress(i + 1)
+      } catch (err) {
+        failures++
+        if (failures >= 3) {
+          setVerifyError(`Muitas falhas na verificacao. Remova o dedo e tente novamente.`)
+          setVerifying(false)
+          await api.webauthnRemoveCredential(credentialRawId || credentialId)
+          refreshCredentials()
+          return
+        }
+        i-- // retry this verification
+        await new Promise((r) => setTimeout(r, 800))
+      }
+    }
+
+    setVerifying(false)
+    setVerifyProgress(0)
+    setVerifyTotal(0)
+    setMessage(`Digital "${label}" cadastrada com sucesso!`)
+    refreshCredentials()
+  }
+
+  function refreshCredentials() {
+    api.webauthnCredentials(user.id)
+      .then(setCredentials)
+      .catch(() => {})
+  }
+
+  async function removeFinger(cred) {
     try {
-      await api.webauthnRemove(user.id)
-      setBioRegistered(false)
-      setMessage('Biometria removida')
+      await api.webauthnRemoveCredential(cred.id)
+      refreshCredentials()
+      setMessage(`Digital "${cred.device_name}" removida.`)
     } catch (err) {
       setError(err.message)
     }
@@ -109,6 +212,10 @@ export default function Profile() {
       setSaving(false)
     }
   }
+
+  const hasCredentials = credentials.length > 0
+  const canAddMore = credentials.length < 10 && webAuthnSupported
+  const isBusy = registering || verifying
 
   return (
     <div>
@@ -166,36 +273,107 @@ export default function Profile() {
         </div>
 
         {webAuthnSupported && (
-          <div className="card">
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+          <div className="card" style={{ gridColumn: '1 / -1' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
               <Fingerprint size={20} style={{ color: 'var(--primary)' }} />
               <h3 style={{ fontSize: '1rem', fontWeight: 600 }}>Biometria</h3>
             </div>
-            {bioChecking ? (
+
+            {bioLoading ? (
               <p style={{ fontSize: '.8125rem', color: 'var(--text-muted)' }}>Verificando...</p>
-            ) : bioRegistered ? (
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                  <ShieldCheck size={16} style={{ color: 'var(--success)' }} />
-                  <span style={{ fontSize: '.8125rem', color: 'var(--success)', fontWeight: 500 }}>
-                    Cadastrada
-                  </span>
-                </div>
-                <p style={{ fontSize: '.75rem', color: 'var(--text-muted)', marginBottom: 12 }}>
-                  Use sua digital ou Face ID para acessar o sistema no celular.
-                </p>
-                <button className="btn btn-outline btn-sm" onClick={handleRemoveBiometric}>
-                  Remover biometria
-                </button>
-              </div>
             ) : (
               <div>
-                <p style={{ fontSize: '.75rem', color: 'var(--text-muted)', marginBottom: 12 }}>
-                  Cadastre sua digital ou Face ID para login rapido no celular.
-                </p>
-                <button className="btn btn-primary btn-sm" onClick={handleRegisterBiometric}>
-                  <Fingerprint size={14} /> Cadastrar biometria
-                </button>
+                {verifyError && (
+                  <div className="alert alert-error" style={{ marginBottom: 12 }}>
+                    <AlertTriangle size={14} style={{ flexShrink: 0 }} /> {verifyError}
+                  </div>
+                )}
+
+                {verifying && (
+                  <div className="biometric-verify-progress">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                      <Loader size={16} className="spin" style={{ color: 'var(--primary)' }} />
+                      <span style={{ fontWeight: 600, fontSize: '.875rem' }}>
+                        Validando "{currentFingerLabel}"
+                      </span>
+                    </div>
+                    <div className="progress-bar">
+                      <div
+                        className="progress-fill"
+                        style={{ width: `${Math.round((verifyProgress / verifyTotal) * 100)}%` }}
+                      />
+                    </div>
+                    <div style={{ fontSize: '.75rem', color: 'var(--text-muted)', marginTop: 6 }}>
+                      Verificacao {verifyProgress} de {verifyTotal}
+                    </div>
+                  </div>
+                )}
+
+                {registering && !verifying && (
+                  <div style={{ padding: '12px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <Loader size={16} className="spin" style={{ color: 'var(--primary)' }} />
+                    <span style={{ fontSize: '.875rem' }}>Posicione o dedo no leitor para cadastrar "{currentFingerLabel}"...</span>
+                  </div>
+                )}
+
+                {!isBusy && hasCredentials && (
+                  <div className="finger-list">
+                    {credentials.map((cred) => (
+                      <div key={cred.id} className="finger-card">
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
+                          <div style={{
+                            width: 32, height: 32, borderRadius: 8,
+                            background: '#dcfce7', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            color: '#166534', flexShrink: 0,
+                          }}>
+                            <Check size={16} />
+                          </div>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontWeight: 600, fontSize: '.875rem' }}>{cred.device_name}</div>
+                            <div style={{ fontSize: '.7rem', color: 'var(--text-muted)' }}>
+                              {cred.sign_count} acessos &middot; {new Date(cred.created_at).toLocaleDateString('pt-BR')}
+                            </div>
+                          </div>
+                        </div>
+                        <button
+                          className="btn btn-outline btn-sm"
+                          onClick={() => removeFinger(cred)}
+                          title="Remover esta digital"
+                          style={{ color: 'var(--danger)', borderColor: 'var(--danger)', flexShrink: 0 }}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {!isBusy && !hasCredentials && (
+                  <div style={{ padding: '8px 0 16px' }}>
+                    <div style={{
+                      display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12,
+                      padding: '10px 14px', background: '#fef9c3', borderRadius: 8,
+                      border: '1px solid #fde68a', fontSize: '.8125rem',
+                    }}>
+                      <Fingerprint size={16} style={{ color: '#854d0e', flexShrink: 0 }} />
+                      <span style={{ color: '#713f12' }}>
+                        Nenhuma digital cadastrada. Adicione para login rapido no celular.
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {!isBusy && canAddMore && (
+                  <button className="btn btn-primary btn-sm" onClick={startFingerRegistration}>
+                    <Plus size={14} /> {hasCredentials ? 'Adicionar outro dedo' : 'Cadastrar digital'}
+                  </button>
+                )}
+
+                {!isBusy && !canAddMore && hasCredentials && (
+                  <p style={{ fontSize: '.75rem', color: 'var(--text-muted)', marginTop: 8 }}>
+                    Todos os 10 dedos cadastrados.
+                  </p>
+                )}
               </div>
             )}
           </div>

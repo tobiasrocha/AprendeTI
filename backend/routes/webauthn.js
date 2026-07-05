@@ -45,7 +45,7 @@ router.post('/register/options', (req, res) => {
 })
 
 router.post('/register', (req, res) => {
-  const { userId, credential } = req.body
+  const { userId, credential, deviceName } = req.body
   if (!userId || !credential) return res.status(400).json({ error: 'Dados obrigatórios' })
 
   try {
@@ -60,7 +60,7 @@ router.post('/register', (req, res) => {
 
     getDb()
       .prepare('INSERT OR REPLACE INTO webauthn_credentials (user_id, credential_id, public_key_pem, sign_count, device_name) VALUES (?, ?, ?, ?, ?)')
-      .run(userId, credIdB64, authData.publicKeyPem, 0, 'Dispositivo movel')
+      .run(userId, credIdB64, authData.publicKeyPem, 0, deviceName || 'Biometria')
 
     res.json({ success: true, credentialId: credIdB64 })
   } catch (e) {
@@ -148,6 +148,14 @@ router.get('/status/:userId', (req, res) => {
   res.json({ registered: count.c > 0 })
 })
 
+router.get('/credentials/:userId', (req, res) => {
+  const creds = getDb()
+    .prepare('SELECT id, credential_id, device_name, sign_count, created_at FROM webauthn_credentials WHERE user_id = ? ORDER BY created_at')
+    .all(req.params.userId)
+
+  res.json(creds)
+})
+
 router.post('/login-discover-options', (_req, res) => {
   const challenge = generateChallenge()
   res.json({ challenge, rpId: RP_ID })
@@ -192,6 +200,48 @@ router.post('/login-discover', (req, res) => {
     console.error('WebAuthn discover error:', e)
     res.status(401).json({ error: 'Falha na autenticação' })
   }
+})
+
+router.post('/verify', (req, res) => {
+  const { credential } = req.body
+  if (!credential) return res.status(400).json({ error: 'Dados obrigatórios' })
+
+  try {
+    const credId = credential.id
+    const { response } = credential
+
+    const stored = getDb()
+      .prepare('SELECT * FROM webauthn_credentials WHERE credential_id = ?')
+      .get(credId)
+
+    if (!stored) return res.status(400).json({ error: 'Credencial não encontrada' })
+
+    const ok = verifyAssertion(
+      stored,
+      response.clientDataJSON,
+      response.authenticatorData,
+      response.signature,
+    )
+
+    if (!ok) return res.status(401).json({ error: 'Falha na verificação' })
+
+    getDb()
+      .prepare('UPDATE webauthn_credentials SET sign_count = sign_count + 1 WHERE id = ?')
+      .run(stored.id)
+
+    res.json({ valid: true, counter: stored.sign_count + 1 })
+  } catch (e) {
+    console.error('WebAuthn verify error:', e)
+    res.status(401).json({ error: 'Falha na verificação' })
+  }
+})
+
+router.delete('/credential/:id', (req, res) => {
+  getDb()
+    .prepare('DELETE FROM webauthn_credentials WHERE id = ?')
+    .run(req.params.id)
+
+  res.json({ success: true })
 })
 
 router.delete('/:userId', (req, res) => {

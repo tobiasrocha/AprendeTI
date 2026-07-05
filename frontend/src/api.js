@@ -128,11 +128,17 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ userId, username }),
     }).then((r) => r.json().then((d) => r.ok ? d : Promise.reject(new Error(d.error)))),
-  webauthnRegister: (userId, credential) =>
+  webauthnRegister: (userId, credential, deviceName) =>
     fetch('/api/webauthn/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId, credential }),
+      body: JSON.stringify({ userId, credential, deviceName }),
+    }).then((r) => r.json().then((d) => r.ok ? d : Promise.reject(new Error(d.error)))),
+  webauthnVerify: (credential) =>
+    fetch('/api/webauthn/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ credential }),
     }).then((r) => r.json().then((d) => r.ok ? d : Promise.reject(new Error(d.error)))),
   webauthnLoginOptions: (username) =>
     fetch('/api/webauthn/login/options', {
@@ -157,6 +163,10 @@ export const api = {
     }).then((r) => r.json().then((d) => r.ok ? d : Promise.reject(new Error(d.error)))),
   webauthnStatus: (userId) =>
     request(`/webauthn/status/${userId}`),
+  webauthnCredentials: (userId) =>
+    request(`/webauthn/credentials/${userId}`),
   webauthnRemove: (userId) =>
     request(`/webauthn/${userId}`, { method: 'DELETE' }),
+  webauthnRemoveCredential: (credentialId) =>
+    request(`/webauthn/credential/${credentialId}`, { method: 'DELETE' }),
 }

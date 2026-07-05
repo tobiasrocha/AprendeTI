@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { api } from '../api'
-import { ArrowLeft, Pencil, Trash2, Download, FileText, GitBranch, ChevronRight, Maximize, Minimize, Share2, X, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react'
+import { ArrowLeft, Pencil, Trash2, Download, FileText, GitBranch, ChevronRight, Maximize, Minimize, Share2, X, ZoomIn, ZoomOut, RotateCcw, ArrowUp } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 
 export default function DocumentViewer() {
@@ -29,6 +29,7 @@ export default function DocumentViewer() {
   const [pan, setPan] = useState({ x: 0, y: 0 })
   const [isDragging, setIsDragging] = useState(false)
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
+  const [showScrollTop, setShowScrollTop] = useState(false)
   const imageRef = useRef(null)
   const lightboxRef = useRef(null)
   const renderRef = useRef(null)
@@ -192,6 +193,16 @@ export default function DocumentViewer() {
     document.addEventListener('fullscreenchange', handler)
     return () => document.removeEventListener('fullscreenchange', handler)
   }, [])
+
+  useEffect(() => {
+    function onScroll() { setShowScrollTop(window.scrollY > 600) }
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
+
+  function scrollToTop() {
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
 
   async function handleDelete() {
     if (!confirm('Remover este documento?')) return
@@ -461,6 +472,12 @@ export default function DocumentViewer() {
             </div>
           </div>
         </div>
+      )}
+
+      {showScrollTop && (
+        <button className="scroll-top-btn" onClick={scrollToTop} title="Voltar ao topo">
+          <ArrowUp size={20} />
+        </button>
       )}
     </div>
   )
