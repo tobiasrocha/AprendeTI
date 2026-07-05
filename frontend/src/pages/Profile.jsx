@@ -27,6 +27,19 @@ const FINGER_LABELS = [
   'Anelar esquerdo', 'Minimo esquerdo',
 ]
 
+const SCAN_POSITIONS = [
+  'Encoste a ponta do dedo centralizada no leitor',
+  'Encoste a parte superior do dedo',
+  'Encoste a lateral direita do dedo',
+  'Encoste a lateral esquerda do dedo',
+  'Encoste a base do dedo',
+  'Encoste o dedo levemente inclinado para direita',
+  'Encoste o dedo levemente inclinado para esquerda',
+  'Encoste mais pressao no centro do dedo',
+  'Encoste o dedo com leve toque na ponta',
+  'Encoste a digital completa cobrindo todo o leitor',
+]
+
 const VERIFICATIONS_PER_FINGER = 10
 
 export default function Profile() {
@@ -45,6 +58,7 @@ export default function Profile() {
   const [verifyTotal, setVerifyTotal] = useState(0)
   const [verifyError, setVerifyError] = useState('')
   const [currentFingerLabel, setCurrentFingerLabel] = useState('')
+  const [scanHint, setScanHint] = useState('')
 
   useEffect(() => {
     if (!webAuthnSupported || !user) return
@@ -99,7 +113,7 @@ export default function Profile() {
       const registerResult = await api.webauthnRegister(user.id, credential, label)
       setRegistering(false)
 
-      await runVerifications(registerResult.credentialId, label, credential.id)
+      await runVerifications(registerResult.credentialId, label)
     } catch (err) {
       setRegistering(false)
       setVerifying(false)
@@ -107,16 +121,19 @@ export default function Profile() {
     }
   }
 
-  async function runVerifications(credentialId, label, rawCredentialId) {
+  async function runVerifications(credentialId, label) {
     setVerifying(true)
     setVerifyProgress(0)
     setVerifyTotal(VERIFICATIONS_PER_FINGER)
     setVerifyError('')
+    setScanHint('')
 
     let consecutiveFailures = 0
 
     for (let i = 0; i < VERIFICATIONS_PER_FINGER; i++) {
-      if (i > 0) await new Promise((r) => setTimeout(r, 700))
+      if (i > 0) await new Promise((r) => setTimeout(r, 600))
+
+      setScanHint(SCAN_POSITIONS[i] || `Leitura ${i + 1} de ${VERIFICATIONS_PER_FINGER}`)
 
       try {
         const challengeRes = await api.webauthnLoginDiscoverOptions()
@@ -133,15 +150,6 @@ export default function Profile() {
         }
 
         const assertion = await navigator.credentials.get({ publicKey })
-
-        const returnedId = assertion.id
-        if (returnedId !== credentialId && returnedId !== rawCredentialId) {
-          setVerifyError('Digital diferente detectada. O dedo usado nao corresponde ao cadastrado. Tente novamente com o mesmo dedo.')
-          setVerifying(false)
-          await api.webauthnRemoveCredential(credentialId)
-          refreshCredentials()
-          return
-        }
 
         const credPayload = {
           id: assertion.id,
@@ -164,14 +172,14 @@ export default function Profile() {
         consecutiveFailures++
 
         if (consecutiveFailures >= 3) {
-          setVerifyError(`Falha na verificacao. Certifique-se de usar o mesmo dedo e que o leitor esta limpo.`)
+          setVerifyError('Muitas falhas consecutivas. Certifique-se de usar o mesmo dedo cadastrado e que o leitor esta limpo.')
           setVerifying(false)
           await api.webauthnRemoveCredential(credentialId)
           refreshCredentials()
           return
         }
 
-        i-- // retry this verification
+        i-- // retry same position
         await new Promise((r) => setTimeout(r, 1000))
       }
     }
@@ -179,6 +187,7 @@ export default function Profile() {
     setVerifying(false)
     setVerifyProgress(0)
     setVerifyTotal(0)
+    setScanHint('')
     setMessage(`Digital "${label}" cadastrada e validada com sucesso!`)
     refreshCredentials()
   }
@@ -307,7 +316,7 @@ export default function Profile() {
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
                       <Loader size={16} className="spin" style={{ color: 'var(--primary)' }} />
                       <span style={{ fontWeight: 600, fontSize: '.875rem' }}>
-                        Validando "{currentFingerLabel}"
+                        Coletando "{currentFingerLabel}"
                       </span>
                     </div>
                     <div className="progress-bar">
@@ -316,8 +325,11 @@ export default function Profile() {
                         style={{ width: `${Math.round((verifyProgress / verifyTotal) * 100)}%` }}
                       />
                     </div>
-                    <div style={{ fontSize: '.75rem', color: 'var(--text-muted)', marginTop: 6 }}>
-                      Verificacao {verifyProgress} de {verifyTotal} — posicione o mesmo dedo no leitor
+                    <div style={{ fontSize: '.75rem', color: 'var(--text-muted)', marginTop: 8, fontStyle: 'italic' }}>
+                      {scanHint}
+                    </div>
+                    <div style={{ fontSize: '.75rem', color: 'var(--text-muted)', marginTop: 2 }}>
+                      Leitura {verifyProgress} de {verifyTotal}
                     </div>
                   </div>
                 )}
