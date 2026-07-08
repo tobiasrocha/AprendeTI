@@ -1,0 +1,20 @@
+# Arquivos que nao devem ser enviados ao contexto de build do Docker
+node_modules
+**/node_modules
+**/dist
+.git
+.gitignore
+*.db
+*.db-shm
+*.db-wal
+uploads/
+**/uploads/
+.env
+.env.*
+!.env.example
+.DS_Store
+README.md
+*.md
+docker-compose*.yml
+Dockerfile*
+!Dockerfile.web

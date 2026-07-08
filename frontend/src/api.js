@@ -107,6 +107,10 @@ export const api = {
     request(`/documents/${id}/share/${userId}`, { method: 'DELETE' }),
   getDocumentShares: (id) =>
     request(`/documents/${id}/shares`),
+  generatePublicLink: (id) =>
+    request(`/documents/${id}/public-link`, { method: 'POST' }),
+  revokePublicLink: (id) =>
+    request(`/documents/${id}/public-link`, { method: 'DELETE' }),
   shareDocumentWithGroup: (id, groupId) =>
     request(`/documents/${id}/share-group`, { method: 'POST', body: JSON.stringify({ groupId }) }),
   unshareDocumentFromGroup: (id, groupId) =>
@@ -134,11 +138,11 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ userId, credential, deviceName }),
     }).then((r) => r.json().then((d) => r.ok ? d : Promise.reject(new Error(d.error)))),
-  webauthnVerify: (credential) =>
+  webauthnVerify: (credential, sessionId) =>
     fetch('/api/webauthn/verify', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ credential }),
+      body: JSON.stringify({ credential, sessionId }),
     }).then((r) => r.json().then((d) => r.ok ? d : Promise.reject(new Error(d.error)))),
   webauthnLoginOptions: (username) =>
     fetch('/api/webauthn/login/options', {
@@ -146,20 +150,20 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username }),
     }).then((r) => r.json().then((d) => r.ok ? d : Promise.reject(new Error(d.error || 'Nenhuma biometria')))),
-  webauthnLogin: (username, credential) =>
+  webauthnLogin: (username, credential, sessionId) =>
     fetch('/api/webauthn/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, credential }),
+      body: JSON.stringify({ username, credential, sessionId }),
     }).then((r) => r.json().then((d) => r.ok ? d : Promise.reject(new Error(d.error)))),
   webauthnLoginDiscoverOptions: () =>
     fetch('/api/webauthn/login-discover-options', { method: 'POST' })
       .then((r) => r.json()),
-  webauthnLoginDiscover: (credential) =>
+  webauthnLoginDiscover: (credential, sessionId) =>
     fetch('/api/webauthn/login-discover', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ credential }),
+      body: JSON.stringify({ credential, sessionId }),
     }).then((r) => r.json().then((d) => r.ok ? d : Promise.reject(new Error(d.error)))),
   webauthnStatus: (userId) =>
     request(`/webauthn/status/${userId}`),

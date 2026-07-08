@@ -32,15 +32,10 @@ const SCAN_POSITIONS = [
   'Encoste a parte superior do dedo',
   'Encoste a lateral direita do dedo',
   'Encoste a lateral esquerda do dedo',
-  'Encoste a base do dedo',
-  'Encoste o dedo levemente inclinado para direita',
-  'Encoste o dedo levemente inclinado para esquerda',
-  'Encoste mais pressao no centro do dedo',
-  'Encoste o dedo com leve toque na ponta',
-  'Encoste a digital completa cobrindo todo o leitor',
+  'Encoste a base do dedo centralizada',
 ]
 
-const VERIFICATIONS_PER_FINGER = 10
+const VERIFICATIONS_PER_FINGER = 5
 
 export default function Profile() {
   const { user } = useAuth()
@@ -73,7 +68,6 @@ export default function Profile() {
     if (registering || verifying) return
     setError('')
     setMessage('')
-    setVerifyError('')
 
     const takenLabels = new Set(credentials.map((c) => c.device_name))
     const label = FINGER_LABELS.find((l) => !takenLabels.has(l)) || `Dedo ${credentials.length + 1}`
@@ -82,7 +76,7 @@ export default function Profile() {
     setRegistering(true)
 
     try {
-      const options = await api.webauthnRegisterOptions(user.id, user.username)
+      const { options } = await api.webauthnRegisterOptions(user.id, user.username)
       options.challenge = base64urlToBuffer(options.challenge)
       options.user.id = base64urlToBuffer(options.user.id)
       if (options.excludeCredentials) {
@@ -92,15 +86,7 @@ export default function Profile() {
         }))
       }
 
-      let cred
-      try {
-        cred = await navigator.credentials.create({ publicKey: options })
-      } catch (webAuthnErr) {
-        console.error('Create error:', webAuthnErr)
-        setRegistering(false)
-        setError('Coleta cancelada ou falhou. Tente novamente.')
-        return
-      }
+      const cred = await navigator.credentials.create({ publicKey: options })
 
       const credential = {
         id: cred.id,
@@ -115,12 +101,13 @@ export default function Profile() {
       setRegistering(false)
 
       await new Promise((r) => setTimeout(r, 800))
-
       await runVerifications(label)
     } catch (err) {
       setRegistering(false)
       setVerifying(false)
-      setError(err.message || 'Falha ao registrar biometria')
+      setError(err.name === 'NotAllowedError'
+        ? 'Coleta cancelada. Posicione o dedo no leitor e tente novamente.'
+        : err.message || 'Falha ao registrar biometria')
     }
   }
 
@@ -134,7 +121,7 @@ export default function Profile() {
 
     let collected = 0
     let retries = 0
-    const MAX_RETRIES = 30
+    const MAX_RETRIES = 15
 
     while (collected < VERIFICATIONS_PER_FINGER && retries < MAX_RETRIES) {
       await new Promise((r) => setTimeout(r, 500))
@@ -142,10 +129,11 @@ export default function Profile() {
 
       try {
         const challengeRes = await api.webauthnLoginDiscoverOptions()
+        const { sessionId, options } = challengeRes
 
         const publicKey = {
-          challenge: base64urlToBuffer(challengeRes.challenge),
-          rpId: challengeRes.rpId,
+          challenge: base64urlToBuffer(options.challenge),
+          rpId: options.rpId,
           timeout: 60000,
           userVerification: 'required',
         }
@@ -154,7 +142,6 @@ export default function Profile() {
         try {
           assertion = await navigator.credentials.get({ publicKey })
         } catch (getErr) {
-          console.error('credentials.get failed:', getErr.message)
           retries++
           setVerifyFail((f) => f + 1)
           continue
@@ -173,18 +160,11 @@ export default function Profile() {
           },
         }
 
-        try {
-          await api.webauthnVerify(credPayload)
-          collected++
-          setVerifyProgress(collected)
-          setVerifyOk((o) => o + 1)
-        } catch (verifyErr) {
-          console.error('Server verify failed:', verifyErr.message)
-          retries++
-          setVerifyFail((f) => f + 1)
-        }
+        await api.webauthnVerify(credPayload, sessionId)
+        collected++
+        setVerifyProgress(collected)
+        setVerifyOk((o) => o + 1)
       } catch (err) {
-        console.error('Verification round error:', err.message)
         retries++
         setVerifyFail((f) => f + 1)
       }

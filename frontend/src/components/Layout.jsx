@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import SessionTimeout from './SessionTimeout'
 import {
   LayoutDashboard, FileText, Users, UserCog, LogOut, BookOpen, FolderTree, FileCode, Group,
-  ChevronLeft, ChevronRight, Minimize, Menu,
+  ChevronLeft, ChevronRight, Minimize, Menu, Sun, Moon,
 } from 'lucide-react'
 
 export default function Layout() {
@@ -13,6 +13,14 @@ export default function Layout() {
   const [collapsed, setCollapsed] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [highContrast, setHighContrast] = useState(() => {
+    return localStorage.getItem('highContrast') === 'true'
+  })
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('high-contrast', highContrast)
+    localStorage.setItem('highContrast', highContrast)
+  }, [highContrast])
 
   useEffect(() => {
     const handler = () => {
@@ -79,6 +87,15 @@ export default function Layout() {
         <NavLink to="/profile" className={({ isActive }) => `sidebar-link${isActive ? ' active' : ''}`} title="Meu Perfil">
           <UserCog size={18} /> <span>Meu Perfil</span>
         </NavLink>
+        <button
+          onClick={() => setHighContrast((c) => !c)}
+          className="sidebar-link"
+          style={{ border: 'none', background: 'none', cursor: 'pointer', width: '100%' }}
+          title={highContrast ? 'Modo normal' : 'Alto contraste'}
+        >
+          {highContrast ? <Sun size={18} /> : <Moon size={18} />}
+          <span>{highContrast ? 'Modo normal' : 'Alto contraste'}</span>
+        </button>
         <button onClick={handleLogout} className="sidebar-link" style={{ border: 'none', background: 'none', cursor: 'pointer', width: '100%' }} title="Sair">
           <LogOut size={18} /> <span>Sair</span>
         </button>

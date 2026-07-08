@@ -170,7 +170,10 @@ export function initDb() {
 
   try { db.exec('ALTER TABLE webauthn_credentials ADD COLUMN transports TEXT DEFAULT \'[]\'') } catch (_) {}
 
+  try { db.exec('ALTER TABLE documents ADD COLUMN public_token TEXT') } catch (_) {}
+
   try { db.exec('CREATE INDEX IF NOT EXISTS idx_documents_parent ON documents(parent_id)') } catch (_) {}
+  try { db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_documents_public_token ON documents(public_token)') } catch (_) {}
 
   const adminUser = process.env.ADMIN_USER || 'admin'
   const adminPass = process.env.ADMIN_PASS

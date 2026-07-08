@@ -44,9 +44,17 @@ function getUserCredentials(userId) {
     .all(userId)
 }
 
-function credentialToAuth(cred) {
+function credentialToJSON(cred) {
   return {
     id: cred.credential_id,
+    type: 'public-key',
+    transports: cred.transports ? JSON.parse(cred.transports) : undefined,
+  }
+}
+
+function credentialToAuth(cred) {
+  return {
+    id: ub64(cred.credential_id),
     publicKey: ub64(cred.public_key_pem),
     counter: cred.sign_count,
     transports: cred.transports ? JSON.parse(cred.transports) : undefined,
@@ -68,16 +76,16 @@ function nextFingerLabel(userId) {
   return labels.find((l) => !taken.includes(l)) || `Dedo ${taken.length + 1}`
 }
 
-router.post('/register/options', (req, res) => {
+router.post('/register/options', async (req, res) => {
   const { userId, username } = req.body
   if (!userId || !username) return res.status(400).json({ error: 'userId e username obrigatórios' })
 
   const existing = getUserCredentials(userId)
 
-  const options = generateRegistrationOptions({
+  const options = await generateRegistrationOptions({
     rpName: RP_NAME,
     rpID: RP_ID,
-    userID: String(userId),
+    userID: new TextEncoder().encode(String(userId)),
     userName: username,
     userDisplayName: username,
     attestationType: 'none',
@@ -87,13 +95,14 @@ router.post('/register/options', (req, res) => {
       residentKey: 'required',
       requireResidentKey: true,
     },
-    excludeCredentials: existing.map((c) => ({ id: c.credential_id, type: 'public-key' })),
+    excludeCredentials: existing.map((c) => credentialToJSON(c)),
   })
 
+  const challengeB64 = b64(options.challenge)
   const sessionId = `reg:${userId}:${crypto.randomUUID()}`
-  saveChallenge(sessionId, options.challenge)
+  saveChallenge(sessionId, challengeB64)
 
-  res.json({ options, sessionId, label: nextFingerLabel(userId) })
+  res.json({ options: { ...options, challenge: challengeB64 }, sessionId, label: nextFingerLabel(userId) })
 })
 
 router.post('/register', async (req, res) => {
@@ -136,7 +145,7 @@ router.post('/register', async (req, res) => {
   res.json({ success: true, credentialId: credIdB64 })
 })
 
-router.post('/login/options', (req, res) => {
+router.post('/login/options', async (req, res) => {
   const { username } = req.body
 
   const user = getDb()
@@ -145,26 +154,23 @@ router.post('/login/options', (req, res) => {
 
   if (!user) return res.status(404).json({ error: 'Usuario não encontrado' })
 
-  const credentials = getUserCredentials(user.id).map(credentialToAuth)
+  const rawCredentials = getUserCredentials(user.id)
 
-  if (credentials.length === 0) {
+  if (rawCredentials.length === 0) {
     return res.status(404).json({ error: 'Nenhuma biometria cadastrada' })
   }
 
-  const options = generateAuthenticationOptions({
+  const options = await generateAuthenticationOptions({
     rpID: RP_ID,
-    allowCredentials: credentials.map((c) => ({
-      id: c.id,
-      type: 'public-key',
-      transports: c.transports,
-    })),
+    allowCredentials: rawCredentials.map((c) => credentialToJSON(c)),
     userVerification: 'required',
   })
 
+  const challengeB64 = b64(options.challenge)
   const sessionId = `login:${user.id}:${crypto.randomUUID()}`
-  saveChallenge(sessionId, options.challenge)
+  saveChallenge(sessionId, challengeB64)
 
-  res.json({ options, sessionId })
+  res.json({ options: { ...options, challenge: challengeB64 }, sessionId })
 })
 
 router.post('/login', async (req, res) => {
@@ -219,16 +225,17 @@ router.post('/login', async (req, res) => {
   }
 })
 
-router.post('/login-discover-options', (_req, res) => {
-  const options = generateAuthenticationOptions({
+router.post('/login-discover-options', async (_req, res) => {
+  const options = await generateAuthenticationOptions({
     rpID: RP_ID,
     userVerification: 'required',
   })
 
+  const challengeB64 = b64(options.challenge)
   const sessionId = `discover:${crypto.randomUUID()}`
-  saveChallenge(sessionId, options.challenge)
+  saveChallenge(sessionId, challengeB64)
 
-  res.json({ options, sessionId })
+  res.json({ options: { ...options, challenge: challengeB64 }, sessionId })
 })
 
 router.post('/login-discover', async (req, res) => {

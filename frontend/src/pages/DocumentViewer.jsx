@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { api } from '../api'
-import { ArrowLeft, Pencil, Trash2, Download, FileText, GitBranch, ChevronRight, Maximize, Minimize, Share2, X, ZoomIn, ZoomOut, RotateCcw, ArrowUp } from 'lucide-react'
+import { ArrowLeft, Pencil, Trash2, Download, FileText, GitBranch, ChevronRight, Maximize, Minimize, Share2, X, ZoomIn, ZoomOut, RotateCcw, ArrowUp, Link, Link2Off, Copy } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 
 export default function DocumentViewer() {
@@ -23,6 +23,9 @@ export default function DocumentViewer() {
   const [selectedUserId, setSelectedUserId] = useState('')
   const [selectedGroupId, setSelectedGroupId] = useState('')
   const [shareError, setShareError] = useState('')
+  const [publicLink, setPublicLink] = useState(null)
+  const [publicLinkLoading, setPublicLinkLoading] = useState(false)
+  const [linkCopied, setLinkCopied] = useState(false)
   const [lightboxOpen, setLightboxOpen] = useState(false)
   const [lightboxSrc, setLightboxSrc] = useState('')
   const [zoom, setZoom] = useState(1)
@@ -30,6 +33,7 @@ export default function DocumentViewer() {
   const [isDragging, setIsDragging] = useState(false)
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
   const [showScrollTop, setShowScrollTop] = useState(false)
+  const [fontSize, setFontSize] = useState(16)
   const imageRef = useRef(null)
   const lightboxRef = useRef(null)
   const renderRef = useRef(null)
@@ -146,6 +150,14 @@ export default function DocumentViewer() {
     api.getGroups().then(setGroups).catch(() => {})
     setShowShareModal(true)
     setShareError('')
+    setLinkCopied(false)
+    api.getDocument(id).then((d) => {
+      if (d.public_token) {
+        setPublicLink({ token: d.public_token, url: `/api/public/d/${d.public_token}` })
+      } else {
+        setPublicLink(null)
+      }
+    }).catch(() => {})
   }
 
   async function handleShare() {
@@ -245,6 +257,21 @@ export default function DocumentViewer() {
         <div style={{ display: 'flex', gap: 8 }}>
           {fullscreen ? null : (
             <>
+              {!isImage && doc.format !== 'pdf' && (
+                <>
+                  <button className="btn btn-outline btn-sm" onClick={() => setFontSize((s) => Math.min(s + 2, 32))} title="Aumentar fonte">
+                    <span style={{ fontSize: 16, fontWeight: 700, lineHeight: 1 }}>A</span>
+                    <span style={{ fontSize: 10 }}>+</span>
+                  </button>
+                  <button className="btn btn-outline btn-sm" onClick={() => setFontSize((s) => Math.max(s - 2, 10))} title="Diminuir fonte">
+                    <span style={{ fontSize: 14, fontWeight: 700, lineHeight: 1 }}>A</span>
+                    <span style={{ fontSize: 10 }}>-</span>
+                  </button>
+                  <button className="btn btn-outline btn-sm" onClick={() => setFontSize(16)} title="Restaurar fonte">
+                    <span style={{ fontSize: 13, fontWeight: 700 }}>A</span>
+                  </button>
+                </>
+              )}
               {currentUser && doc.user_id === currentUser.id && (
                 <button className="btn btn-outline btn-sm" onClick={openShareModal} title="Compartilhar">
                   <Share2 size={14} /> Compartilhar
@@ -374,6 +401,7 @@ export default function DocumentViewer() {
           className="doc-render"
           ref={renderRef}
           onClick={handleRenderClick}
+          style={{ '--doc-font-size': `${fontSize / 16}rem` }}
           dangerouslySetInnerHTML={{ __html: html }}
         />
       )}
@@ -449,6 +477,75 @@ export default function DocumentViewer() {
                 ))}
               </select>
               <button className="btn btn-primary btn-sm" onClick={handleShareGroup} disabled={!selectedGroupId}>Compartilhar</button>
+            </div>
+
+            <div style={{
+              marginTop: 16, marginBottom: 16, padding: 16,
+              borderTop: '1px solid var(--border)',
+            }}>
+              <div style={{ fontSize: '.75rem', fontWeight: 600, marginBottom: 8, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.05em' }}>
+                <Link size={14} style={{ marginRight: 4, verticalAlign: 'middle' }} />
+                Link Público
+              </div>
+              {publicLink ? (
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <input
+                    className="form-input"
+                    type="text"
+                    readOnly
+                    value={`${window.location.origin}${publicLink.url}`}
+                    style={{ fontSize: '.75rem', fontFamily: 'monospace' }}
+                    onClick={(e) => e.target.select()}
+                  />
+                  <button
+                    className="btn btn-outline btn-sm"
+                    onClick={() => {
+                      navigator.clipboard.writeText(`${window.location.origin}${publicLink.url}`)
+                      setLinkCopied(true)
+                      setTimeout(() => setLinkCopied(false), 2000)
+                    }}
+                    title="Copiar link"
+                  >
+                    {linkCopied ? <span style={{ color: 'var(--success)', fontSize: '.7rem' }}>Copiado!</span> : <Copy size={14} />}
+                  </button>
+                  <button
+                    className="btn btn-outline btn-sm"
+                    onClick={async () => {
+                      try {
+                        await api.revokePublicLink(id)
+                        setPublicLink(null)
+                      } catch (e) {
+                        setShareError(e.message)
+                      }
+                    }}
+                    title="Remover link público"
+                    style={{ color: 'var(--danger)', borderColor: 'var(--danger)' }}
+                  >
+                    <Link2Off size={14} />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  className="btn btn-primary btn-sm"
+                  onClick={async () => {
+                    setPublicLinkLoading(true)
+                    try {
+                      const result = await api.generatePublicLink(id)
+                      setPublicLink({ token: result.token, url: result.url })
+                    } catch (e) {
+                      setShareError(e.message)
+                    } finally {
+                      setPublicLinkLoading(false)
+                    }
+                  }}
+                  disabled={publicLinkLoading}
+                >
+                  <Link size={14} /> {publicLinkLoading ? 'Gerando...' : 'Gerar link público'}
+                </button>
+              )}
+              <p style={{ fontSize: '.6875rem', color: 'var(--text-muted)', marginTop: 6 }}>
+                Qualquer pessoa com o link pode visualizar este documento sem fazer login.
+              </p>
             </div>
 
             {(shares.length > 0 || groupShares.length > 0) && (

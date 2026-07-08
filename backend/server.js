@@ -10,6 +10,7 @@ import categoryRoutes from './routes/categories.js'
 import formatRoutes from './routes/formats.js'
 import webauthnRoutes from './routes/webauthn.js'
 import groupRoutes from './routes/groups.js'
+import publicRoutes from './routes/public.js'
 
 const app = express()
 const PORT = process.env.API_PORT || 3001
@@ -41,6 +42,7 @@ app.use('/api/categories', categoryRoutes)
 app.use('/api/formats', formatRoutes)
 app.use('/api/webauthn', webauthnRoutes)
 app.use('/api/groups', groupRoutes)
+app.use('/api/public', publicRoutes)
 
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', service: 'repositorio-aprendeti-api' })

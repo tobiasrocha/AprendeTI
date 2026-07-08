@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { api } from '../api'
-import { BookOpen, Lock, Fingerprint, User } from 'lucide-react'
+import { BookOpen, Lock, Fingerprint, ArrowLeft } from 'lucide-react'
 
 function bufferToBase64url(buf) {
   return btoa(String.fromCharCode(...new Uint8Array(buf)))
@@ -18,6 +18,26 @@ function base64urlToBuffer(str) {
   return buf.buffer
 }
 
+function buildCredential(assertion) {
+  return {
+    id: assertion.id,
+    type: assertion.type,
+    response: {
+      authenticatorData: bufferToBase64url(assertion.response.authenticatorData),
+      clientDataJSON: bufferToBase64url(assertion.response.clientDataJSON),
+      signature: bufferToBase64url(assertion.response.signature),
+      userHandle: assertion.response.userHandle
+        ? bufferToBase64url(assertion.response.userHandle)
+        : null,
+    },
+  }
+}
+
+function doLogin(token, user) {
+  localStorage.setItem('token', token)
+  localStorage.setItem('user', JSON.stringify(user))
+}
+
 const webAuthnSupported = typeof window !== 'undefined' &&
   typeof window.PublicKeyCredential !== 'undefined'
 
@@ -26,8 +46,8 @@ export default function Login() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
-  const [bioMode, setBioMode] = useState(false)
   const [bioUsername, setBioUsername] = useState('')
+  const [showUsername, setShowUsername] = useState(false)
   const { login } = useAuth()
   const navigate = useNavigate()
 
@@ -48,99 +68,57 @@ export default function Login() {
   async function handleBiometric() {
     setError('')
     setLoading(true)
-    setBioMode(false)
 
     try {
       const challengeRes = await api.webauthnLoginDiscoverOptions()
+
       const publicKey = {
-        challenge: base64urlToBuffer(challengeRes.challenge),
-        rpId: challengeRes.rpId,
+        challenge: base64urlToBuffer(challengeRes.options.challenge),
+        rpId: challengeRes.options.rpId,
         timeout: 60000,
         userVerification: 'required',
       }
 
-      let assertion
-      try {
-        assertion = await navigator.credentials.get({ publicKey })
-      } catch (webAuthnErr) {
-        console.error('WebAuthn discover error:', webAuthnErr)
-        setBioMode(true)
-        setLoading(false)
-        return
-      }
-
-      const credential = {
-        id: assertion.id,
-        type: assertion.type,
-        response: {
-          authenticatorData: bufferToBase64url(assertion.response.authenticatorData),
-          clientDataJSON: bufferToBase64url(assertion.response.clientDataJSON),
-          signature: bufferToBase64url(assertion.response.signature),
-          userHandle: assertion.response.userHandle
-            ? bufferToBase64url(assertion.response.userHandle)
-            : null,
-        },
-      }
-
-      const result = await api.webauthnLoginDiscover(credential)
-      localStorage.setItem('token', result.token)
-      localStorage.setItem('user', JSON.stringify(result.user))
+      const assertion = await navigator.credentials.get({ publicKey })
+      const credential = buildCredential(assertion)
+      const result = await api.webauthnLoginDiscover(credential, challengeRes.sessionId)
+      doLogin(result.token, result.user)
       navigate('/')
     } catch (err) {
-      setError(err.message || 'Falha na autenticação biometrica. Use usuario e senha.')
       setLoading(false)
+      if (err.name === 'NotAllowedError') {
+        setShowUsername(true)
+      } else {
+        setError(err.message || 'Falha na autenticação')
+      }
     }
   }
 
-  async function handleBiometricWithUsername(e) {
+  async function handleUsernameBio(e) {
     e.preventDefault()
     if (!bioUsername.trim()) return
 
     setError('')
     setLoading(true)
-    setBioMode(false)
 
     try {
       const optionsRes = await api.webauthnLoginOptions(bioUsername.trim())
 
       const publicKey = {
-        challenge: base64urlToBuffer(optionsRes.challenge),
-        rpId: optionsRes.rpId,
+        challenge: base64urlToBuffer(optionsRes.options.challenge),
+        rpId: optionsRes.options.rpId,
         timeout: 60000,
         userVerification: 'required',
-        allowCredentials: optionsRes.allowCredentials.map((c) => ({
+        allowCredentials: optionsRes.options.allowCredentials.map((c) => ({
           type: c.type,
           id: base64urlToBuffer(c.id),
         })),
       }
 
-      let assertion
-      try {
-        assertion = await navigator.credentials.get({ publicKey })
-      } catch (webAuthnErr) {
-        console.error('WebAuthn login error:', webAuthnErr)
-        setLoading(false)
-        setError('Falha ao acessar o autenticador. Verifique se o PIN/biometria esta configurado.')
-        setBioMode(true)
-        return
-      }
-
-      const credential = {
-        id: assertion.id,
-        type: assertion.type,
-        response: {
-          authenticatorData: bufferToBase64url(assertion.response.authenticatorData),
-          clientDataJSON: bufferToBase64url(assertion.response.clientDataJSON),
-          signature: bufferToBase64url(assertion.response.signature),
-          userHandle: assertion.response.userHandle
-            ? bufferToBase64url(assertion.response.userHandle)
-            : null,
-        },
-      }
-
-      const result = await api.webauthnLogin(bioUsername.trim(), credential)
-      localStorage.setItem('token', result.token)
-      localStorage.setItem('user', JSON.stringify(result.user))
+      const assertion = await navigator.credentials.get({ publicKey })
+      const credential = buildCredential(assertion)
+      const result = await api.webauthnLogin(bioUsername.trim(), credential, optionsRes.sessionId)
+      doLogin(result.token, result.user)
       navigate('/')
     } catch (err) {
       setError(err.message || 'Falha na autenticação')
@@ -159,27 +137,27 @@ export default function Login() {
 
         {error && <div className="alert alert-error">{error}</div>}
 
-        {webAuthnSupported && !bioMode && (
+        {webAuthnSupported && !showUsername && (
           <button
             className="btn btn-outline"
-            style={{ width: '100%', marginBottom: 16, padding: '12px' }}
+            style={{ width: '100%', marginBottom: 20, padding: '12px' }}
             onClick={handleBiometric}
             disabled={loading}
           >
             <Fingerprint size={20} />
-            Entrar com Biometria ou PIN
+            {loading ? 'Autenticando...' : 'Entrar com Biometria ou PIN'}
           </button>
         )}
 
-        {bioMode && (
+        {webAuthnSupported && showUsername && (
           <div style={{
             padding: 16, background: 'var(--primary-light)', borderRadius: 10,
-            border: '1px solid var(--border)', marginBottom: 16,
+            border: '1px solid var(--border)', marginBottom: 20,
           }}>
             <p style={{ fontSize: '.8125rem', marginBottom: 12, textAlign: 'center', color: 'var(--text-muted)' }}>
-              Nenhuma chave de acesso encontrada. Informe seu usuario para buscar suas digitais cadastradas.
+              Informe seu usuario para buscar suas digitais cadastradas.
             </p>
-            <form onSubmit={handleBiometricWithUsername}>
+            <form onSubmit={handleUsernameBio}>
               <div style={{ display: 'flex', gap: 8 }}>
                 <input
                   className="form-input"
@@ -201,10 +179,10 @@ export default function Login() {
                 type="button"
                 className="btn btn-outline btn-sm"
                 style={{ width: '100%', marginTop: 8 }}
-                onClick={() => { setBioMode(false); setError('') }}
+                onClick={() => { setShowUsername(false); setError(''); setBioUsername('') }}
                 disabled={loading}
               >
-                Cancelar
+                <ArrowLeft size={14} /> Voltar
               </button>
             </form>
           </div>

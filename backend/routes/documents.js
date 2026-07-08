@@ -439,6 +439,38 @@ router.delete('/:id/share-group/:groupId', (req, res) => {
   res.json({ message: 'Compartilhamento com grupo removido' })
 })
 
+router.post('/:id/public-link', (req, res) => {
+  const doc = getDb()
+    .prepare('SELECT * FROM documents WHERE id = ? AND user_id = ?')
+    .get(req.params.id, req.user.id)
+
+  if (!doc) return res.status(404).json({ error: 'Documento não encontrado' })
+
+  let token = doc.public_token
+  if (!token) {
+    token = crypto.randomUUID()
+    getDb()
+      .prepare('UPDATE documents SET public_token = ? WHERE id = ?')
+      .run(token, doc.id)
+  }
+
+  res.json({ token, url: `/api/public/d/${token}` })
+})
+
+router.delete('/:id/public-link', (req, res) => {
+  const doc = getDb()
+    .prepare('SELECT * FROM documents WHERE id = ? AND user_id = ?')
+    .get(req.params.id, req.user.id)
+
+  if (!doc) return res.status(404).json({ error: 'Documento não encontrado' })
+
+  getDb()
+    .prepare('UPDATE documents SET public_token = NULL WHERE id = ?')
+    .run(doc.id)
+
+  res.json({ message: 'Link público removido' })
+})
+
 router.get('/:id/download', (req, res) => {
   const doc = getAccessibleDocument(req.params.id, req.user.id)
 
