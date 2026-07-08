@@ -127,6 +127,14 @@ export default function DocumentViewer() {
     if (match) {
       e.preventDefault()
       const docId = match[1]
+      if (doc && String(doc.id) === docId && doc.format === 'pdf' && pdfUrl) {
+        window.open(pdfUrl, '_blank')
+        return
+      }
+      if (doc && String(doc.id) === docId && doc.format === 'pdf') {
+        loadBinaryInline(docId, (url) => window.open(url, '_blank'))
+        return
+      }
       const title = (doc && doc.id === Number(docId)) ? doc.title : 'documento'
       handleDownload(docId, title)
     }

@@ -8,7 +8,6 @@ RUN npm ci --omit=dev
 COPY server.js database.js ./
 COPY middleware/ ./middleware/
 COPY routes/ ./routes/
-COPY utils/ ./utils/
 
 RUN mkdir -p /data/uploads /data/db
 

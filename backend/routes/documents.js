@@ -87,6 +87,19 @@ function contentDisposition(disposition, filename) {
   return `${disposition}; filename="${ascii}"; filename*=UTF-8''${encoded}`
 }
 
+function getAccessibleDocument(docId, userId) {
+  return getDb()
+    .prepare(
+      `SELECT * FROM documents
+       WHERE id = ? AND (
+         user_id = ?
+         OR id IN (SELECT document_id FROM document_shares WHERE shared_with_user_id = ?)
+         OR id IN (SELECT dgs.document_id FROM document_group_shares dgs JOIN user_groups ug ON dgs.group_id = ug.group_id WHERE ug.user_id = ?)
+       )`
+    )
+    .get(docId, userId, userId, userId)
+}
+
 router.get('/', (req, res) => {
   const { search, format, category_id, parent_id, root, limit = 50, offset = 0 } = req.query
 
@@ -427,9 +440,7 @@ router.delete('/:id/share-group/:groupId', (req, res) => {
 })
 
 router.get('/:id/download', (req, res) => {
-  const doc = getDb()
-    .prepare('SELECT * FROM documents WHERE id = ? AND user_id = ?')
-    .get(req.params.id, req.user.id)
+  const doc = getAccessibleDocument(req.params.id, req.user.id)
 
   if (!doc) return res.status(404).json({ error: 'Documento não encontrado' })
 
@@ -458,9 +469,7 @@ router.get('/:id/download', (req, res) => {
 })
 
 router.get('/:id/render', (req, res) => {
-  const doc = getDb()
-    .prepare('SELECT * FROM documents WHERE id = ? AND user_id = ?')
-    .get(req.params.id, req.user.id)
+  const doc = getAccessibleDocument(req.params.id, req.user.id)
 
   if (!doc) return res.status(404).json({ error: 'Documento não encontrado' })
 

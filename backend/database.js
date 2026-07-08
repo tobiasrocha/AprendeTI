@@ -70,6 +70,7 @@ export function initDb() {
       public_key_pem TEXT NOT NULL,
       sign_count INTEGER NOT NULL DEFAULT 0,
       device_name TEXT DEFAULT '',
+      transports TEXT DEFAULT '[]',
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     );
@@ -166,6 +167,8 @@ export function initDb() {
   for (const col of ['category_id', 'parent_id']) {
     try { db.exec(`ALTER TABLE documents ADD COLUMN ${col} INTEGER REFERENCES ${col === 'parent_id' ? 'documents(id) ON DELETE SET NULL' : 'categories(id) ON DELETE SET NULL'}`) } catch (_) {}
   }
+
+  try { db.exec('ALTER TABLE webauthn_credentials ADD COLUMN transports TEXT DEFAULT \'[]\'') } catch (_) {}
 
   try { db.exec('CREATE INDEX IF NOT EXISTS idx_documents_parent ON documents(parent_id)') } catch (_) {}
 

@@ -1,72 +1,139 @@
 import { Router } from 'express'
 import { getDb } from '../database.js'
-import { generateChallenge, parseAttestation, verifyAssertion, bufferToBase64url } from '../utils/webauthn.js'
+import {
+  generateRegistrationOptions,
+  verifyRegistrationResponse,
+  generateAuthenticationOptions,
+  verifyAuthenticationResponse,
+} from '@simplewebauthn/server'
 import { generateToken } from '../middleware/auth.js'
 
 const router = Router()
+
 const RP_NAME = 'AprendeTI'
-const RP_ID = 'aprendeti.uman-app.uk'
-const ORIGIN = 'https://aprendeti.uman-app.uk'
+const RP_ID = process.env.WEBAUTHN_RP_ID || 'aprendeti.uman-app.uk'
+const ORIGIN = process.env.WEBAUTHN_ORIGIN || `https://${RP_ID}`
+
+const CHALLENGE_TTL_MS = 5 * 60 * 1000
+const challengeStore = new Map()
+
+function saveChallenge(key, challenge) {
+  challengeStore.set(key, { challenge, expiresAt: Date.now() + CHALLENGE_TTL_MS })
+  setTimeout(() => challengeStore.delete(key), CHALLENGE_TTL_MS)
+}
+
+function takeChallenge(key) {
+  const entry = challengeStore.get(key)
+  if (!entry) return null
+  challengeStore.delete(key)
+  if (Date.now() > entry.expiresAt) return null
+  return entry.challenge
+}
+
+function b64(buf) {
+  return Buffer.from(buf).toString('base64url')
+}
+
+function ub64(str) {
+  return new Uint8Array(Buffer.from(str, 'base64url'))
+}
+
+function getUserCredentials(userId) {
+  return getDb()
+    .prepare('SELECT id, credential_id, public_key_pem, sign_count, device_name, transports FROM webauthn_credentials WHERE user_id = ?')
+    .all(userId)
+}
+
+function credentialToAuth(cred) {
+  return {
+    id: cred.credential_id,
+    publicKey: ub64(cred.public_key_pem),
+    counter: cred.sign_count,
+    transports: cred.transports ? JSON.parse(cred.transports) : undefined,
+  }
+}
+
+function nextFingerLabel(userId) {
+  const taken = getDb()
+    .prepare('SELECT device_name FROM webauthn_credentials WHERE user_id = ?')
+    .all(userId)
+    .map((c) => c.device_name)
+
+  const labels = [
+    'Polegar direito', 'Indicador direito', 'Medio direito',
+    'Anelar direito', 'Minimo direito',
+    'Polegar esquerdo', 'Indicador esquerdo', 'Medio esquerdo',
+    'Anelar esquerdo', 'Minimo esquerdo',
+  ]
+  return labels.find((l) => !taken.includes(l)) || `Dedo ${taken.length + 1}`
+}
 
 router.post('/register/options', (req, res) => {
   const { userId, username } = req.body
   if (!userId || !username) return res.status(400).json({ error: 'userId e username obrigatórios' })
 
-  const existing = getDb()
-    .prepare('SELECT credential_id FROM webauthn_credentials WHERE user_id = ?')
-    .all(userId)
+  const existing = getUserCredentials(userId)
 
-  const challenge = generateChallenge()
-
-  res.json({
-    rp: { name: RP_NAME, id: RP_ID },
-    user: {
-      id: bufferToBase64url(String(userId)),
-      name: username,
-      displayName: username,
-    },
-    challenge,
-    pubKeyCredParams: [
-      { type: 'public-key', alg: -7 },
-      { type: 'public-key', alg: -257 },
-    ],
-    timeout: 60000,
-    attestation: 'none',
-    excludeCredentials: existing.map((c) => ({
-      type: 'public-key',
-      id: c.credential_id,
-    })),
+  const options = generateRegistrationOptions({
+    rpName: RP_NAME,
+    rpID: RP_ID,
+    userID: String(userId),
+    userName: username,
+    userDisplayName: username,
+    attestationType: 'none',
     authenticatorSelection: {
       authenticatorAttachment: 'platform',
       userVerification: 'required',
       residentKey: 'required',
+      requireResidentKey: true,
     },
+    excludeCredentials: existing.map((c) => ({ id: c.credential_id, type: 'public-key' })),
   })
+
+  const sessionId = `reg:${userId}:${crypto.randomUUID()}`
+  saveChallenge(sessionId, options.challenge)
+
+  res.json({ options, sessionId, label: nextFingerLabel(userId) })
 })
 
-router.post('/register', (req, res) => {
-  const { userId, credential, deviceName } = req.body
-  if (!userId || !credential) return res.status(400).json({ error: 'Dados obrigatórios' })
-
-  try {
-    const { response } = credential
-    const authData = parseAttestation(response.attestationObject)
-
-    if (!authData.credentialId || !authData.publicKeyPem) {
-      return res.status(400).json({ error: 'Falha ao extrair chave publica' })
-    }
-
-    const credIdB64 = bufferToBase64url(authData.credentialId)
-
-    getDb()
-      .prepare('INSERT OR REPLACE INTO webauthn_credentials (user_id, credential_id, public_key_pem, sign_count, device_name) VALUES (?, ?, ?, ?, ?)')
-      .run(userId, credIdB64, authData.publicKeyPem, 0, deviceName || 'Biometria')
-
-    res.json({ success: true, credentialId: credIdB64 })
-  } catch (e) {
-    console.error('WebAuthn register error:', e)
-    res.status(400).json({ error: 'Falha ao registrar biometria: ' + e.message })
+router.post('/register', async (req, res) => {
+  const { userId, credential, deviceName, sessionId } = req.body
+  if (!userId || !credential || !sessionId) {
+    return res.status(400).json({ error: 'Dados obrigatórios' })
   }
+
+  const expectedChallenge = takeChallenge(sessionId)
+  if (!expectedChallenge) {
+    return res.status(400).json({ error: 'Sessão de cadastro expirada. Tente novamente.' })
+  }
+
+  let verification
+  try {
+    verification = await verifyRegistrationResponse({
+      response: credential,
+      expectedChallenge,
+      expectedOrigin: ORIGIN,
+      expectedRPID: RP_ID,
+      requireUserVerification: true,
+      supportedCOSEAlgorithmIDs: [-7, -257],
+    })
+  } catch (e) {
+    return res.status(400).json({ error: 'Falha na verificação do registro: ' + e.message })
+  }
+
+  if (!verification.verified || !verification.registrationInfo) {
+    return res.status(400).json({ error: 'Registro não verificado' })
+  }
+
+  const { credentialID, credentialPublicKey, counter, transports } = verification.registrationInfo
+  const credIdB64 = b64(credentialID)
+  const pubKeyB64 = b64(credentialPublicKey)
+
+  getDb()
+    .prepare('INSERT OR REPLACE INTO webauthn_credentials (user_id, credential_id, public_key_pem, sign_count, device_name, transports) VALUES (?, ?, ?, ?, ?, ?)')
+    .run(userId, credIdB64, pubKeyB64, counter, deviceName || 'Biometria', JSON.stringify(transports || []))
+
+  res.json({ success: true, credentialId: credIdB64 })
 })
 
 router.post('/login/options', (req, res) => {
@@ -78,65 +145,173 @@ router.post('/login/options', (req, res) => {
 
   if (!user) return res.status(404).json({ error: 'Usuario não encontrado' })
 
-  const credentials = getDb()
-    .prepare('SELECT credential_id FROM webauthn_credentials WHERE user_id = ?')
-    .all(user.id)
+  const credentials = getUserCredentials(user.id).map(credentialToAuth)
 
   if (credentials.length === 0) {
     return res.status(404).json({ error: 'Nenhuma biometria cadastrada' })
   }
 
-  const challenge = generateChallenge()
-
-  res.json({
-    challenge,
-    rpId: RP_ID,
+  const options = generateAuthenticationOptions({
+    rpID: RP_ID,
     allowCredentials: credentials.map((c) => ({
+      id: c.id,
       type: 'public-key',
-      id: c.credential_id,
+      transports: c.transports,
     })),
-    timeout: 60000,
     userVerification: 'required',
   })
+
+  const sessionId = `login:${user.id}:${crypto.randomUUID()}`
+  saveChallenge(sessionId, options.challenge)
+
+  res.json({ options, sessionId })
 })
 
-router.post('/login', (req, res) => {
-  const { username, credential } = req.body
-  if (!username || !credential) return res.status(400).json({ error: 'Dados obrigatórios' })
+router.post('/login', async (req, res) => {
+  const { username, credential, sessionId } = req.body
+  if (!username || !credential || !sessionId) {
+    return res.status(400).json({ error: 'Dados obrigatórios' })
+  }
+
+  const user = getDb()
+    .prepare('SELECT id FROM users WHERE username = ? AND active = 1')
+    .get(username)
+  if (!user) return res.status(404).json({ error: 'Usuario não encontrado' })
+
+  const stored = getDb()
+    .prepare('SELECT * FROM webauthn_credentials WHERE credential_id = ?')
+    .get(credential.id)
+  if (!stored || stored.user_id !== user.id) {
+    return res.status(401).json({ error: 'Credencial não corresponde ao usuario' })
+  }
+
+  const expectedChallenge = takeChallenge(sessionId)
+  if (!expectedChallenge) {
+    return res.status(400).json({ error: 'Sessão expirada. Tente novamente.' })
+  }
 
   try {
-    const credId = credential.id
-    const { response } = credential
+    const verification = await verifyAuthenticationResponse({
+      response: credential,
+      expectedChallenge,
+      expectedOrigin: ORIGIN,
+      expectedRPID: RP_ID,
+      credential: credentialToAuth(stored),
+      requireUserVerification: true,
+    })
 
-    const stored = getDb()
-      .prepare('SELECT * FROM webauthn_credentials WHERE credential_id = ?')
-      .get(credId)
-
-    if (!stored) return res.status(400).json({ error: 'Credencial não encontrada' })
-
-    const ok = verifyAssertion(
-      stored,
-      response.clientDataJSON,
-      response.authenticatorData,
-      response.signature,
-    )
-
-    if (!ok) return res.status(401).json({ error: 'Falha na verificação biometrica' })
+    if (!verification.verified) {
+      return res.status(401).json({ error: 'Falha na verificação biometrica' })
+    }
 
     getDb()
-      .prepare('UPDATE webauthn_credentials SET sign_count = sign_count + 1 WHERE id = ?')
-      .run(stored.id)
+      .prepare('UPDATE webauthn_credentials SET sign_count = ? WHERE id = ?')
+      .run(verification.authenticationInfo.newCounter, stored.id)
 
     const dbUser = getDb()
       .prepare('SELECT id, username, email, role FROM users WHERE id = ?')
       .get(stored.user_id)
 
     const token = generateToken(dbUser)
-
     res.json({ token, user: dbUser })
   } catch (e) {
-    console.error('WebAuthn login error:', e)
     res.status(401).json({ error: 'Falha na autenticação biometrica: ' + e.message })
+  }
+})
+
+router.post('/login-discover-options', (_req, res) => {
+  const options = generateAuthenticationOptions({
+    rpID: RP_ID,
+    userVerification: 'required',
+  })
+
+  const sessionId = `discover:${crypto.randomUUID()}`
+  saveChallenge(sessionId, options.challenge)
+
+  res.json({ options, sessionId })
+})
+
+router.post('/login-discover', async (req, res) => {
+  const { credential, sessionId } = req.body
+  if (!credential || !sessionId) return res.status(400).json({ error: 'Dados obrigatórios' })
+
+  const stored = getDb()
+    .prepare('SELECT * FROM webauthn_credentials WHERE credential_id = ?')
+    .get(credential.id)
+  if (!stored) {
+    return res.status(400).json({ error: 'Credencial biometrica não encontrada. Cadastre no perfil.' })
+  }
+
+  const expectedChallenge = takeChallenge(sessionId)
+  if (!expectedChallenge) {
+    return res.status(400).json({ error: 'Sessão expirada. Tente novamente.' })
+  }
+
+  try {
+    const verification = await verifyAuthenticationResponse({
+      response: credential,
+      expectedChallenge,
+      expectedOrigin: ORIGIN,
+      expectedRPID: RP_ID,
+      credential: credentialToAuth(stored),
+      requireUserVerification: true,
+    })
+
+    if (!verification.verified) {
+      return res.status(401).json({ error: 'Falha na verificação biometrica' })
+    }
+
+    getDb()
+      .prepare('UPDATE webauthn_credentials SET sign_count = ? WHERE id = ?')
+      .run(verification.authenticationInfo.newCounter, stored.id)
+
+    const dbUser = getDb()
+      .prepare('SELECT id, username, email, role FROM users WHERE id = ? AND active = 1')
+      .get(stored.user_id)
+    if (!dbUser) return res.status(401).json({ error: 'Usuario inativo ou não encontrado' })
+
+    const token = generateToken(dbUser)
+    res.json({ token, user: dbUser })
+  } catch (e) {
+    res.status(401).json({ error: 'Falha na autenticação' })
+  }
+})
+
+router.post('/verify', async (req, res) => {
+  const { credential, sessionId } = req.body
+  if (!credential || !sessionId) return res.status(400).json({ error: 'Dados obrigatórios' })
+
+  const stored = getDb()
+    .prepare('SELECT * FROM webauthn_credentials WHERE credential_id = ?')
+    .get(credential.id)
+  if (!stored) return res.status(400).json({ error: 'Credencial não encontrada' })
+
+  const expectedChallenge = takeChallenge(sessionId)
+  if (!expectedChallenge) {
+    return res.status(400).json({ error: 'Sessão expirada. Solicite um novo desafio.' })
+  }
+
+  try {
+    const verification = await verifyAuthenticationResponse({
+      response: credential,
+      expectedChallenge,
+      expectedOrigin: ORIGIN,
+      expectedRPID: RP_ID,
+      credential: credentialToAuth(stored),
+      requireUserVerification: true,
+    })
+
+    if (!verification.verified) {
+      return res.status(401).json({ error: 'Falha na verificação' })
+    }
+
+    getDb()
+      .prepare('UPDATE webauthn_credentials SET sign_count = ? WHERE id = ?')
+      .run(verification.authenticationInfo.newCounter, stored.id)
+
+    res.json({ valid: true, counter: verification.authenticationInfo.newCounter })
+  } catch (e) {
+    res.status(401).json({ error: 'Falha na verificação' })
   }
 })
 
@@ -156,99 +331,13 @@ router.get('/credentials/:userId', (req, res) => {
   res.json(creds)
 })
 
-router.post('/login-discover-options', (_req, res) => {
-  const challenge = generateChallenge()
-  res.json({ challenge, rpId: RP_ID })
-})
-
-router.post('/login-discover', (req, res) => {
-  const { credential } = req.body
-  if (!credential) return res.status(400).json({ error: 'Dados obrigatórios' })
-
-  try {
-    const credId = credential.id
-    const { response } = credential
-
-    const stored = getDb()
-      .prepare('SELECT * FROM webauthn_credentials WHERE credential_id = ?')
-      .get(credId)
-
-    if (!stored) return res.status(400).json({ error: 'Credencial biometrica não encontrada. Cadastre no perfil.' })
-
-    const ok = verifyAssertion(
-      stored,
-      response.clientDataJSON,
-      response.authenticatorData,
-      response.signature,
-    )
-
-    if (!ok) return res.status(401).json({ error: 'Falha na verificação biometrica' })
-
-    getDb()
-      .prepare('UPDATE webauthn_credentials SET sign_count = sign_count + 1 WHERE id = ?')
-      .run(stored.id)
-
-    const dbUser = getDb()
-      .prepare('SELECT id, username, email, role FROM users WHERE id = ? AND active = 1')
-      .get(stored.user_id)
-
-    if (!dbUser) return res.status(401).json({ error: 'Usuario inativo ou não encontrado' })
-
-    const token = generateToken(dbUser)
-    res.json({ token, user: dbUser })
-  } catch (e) {
-    console.error('WebAuthn discover error:', e)
-    res.status(401).json({ error: 'Falha na autenticação' })
-  }
-})
-
-router.post('/verify', (req, res) => {
-  const { credential } = req.body
-  if (!credential) return res.status(400).json({ error: 'Dados obrigatórios' })
-
-  try {
-    const credId = credential.id
-    const { response } = credential
-
-    const stored = getDb()
-      .prepare('SELECT * FROM webauthn_credentials WHERE credential_id = ?')
-      .get(credId)
-
-    if (!stored) return res.status(400).json({ error: 'Credencial não encontrada' })
-
-    const ok = verifyAssertion(
-      stored,
-      response.clientDataJSON,
-      response.authenticatorData,
-      response.signature,
-    )
-
-    if (!ok) return res.status(401).json({ error: 'Falha na verificação' })
-
-    getDb()
-      .prepare('UPDATE webauthn_credentials SET sign_count = sign_count + 1 WHERE id = ?')
-      .run(stored.id)
-
-    res.json({ valid: true, counter: stored.sign_count + 1 })
-  } catch (e) {
-    console.error('WebAuthn verify error:', e)
-    res.status(401).json({ error: 'Falha na verificação' })
-  }
-})
-
 router.delete('/credential/:id', (req, res) => {
-  getDb()
-    .prepare('DELETE FROM webauthn_credentials WHERE id = ?')
-    .run(req.params.id)
-
+  getDb().prepare('DELETE FROM webauthn_credentials WHERE id = ?').run(req.params.id)
   res.json({ success: true })
 })
 
 router.delete('/:userId', (req, res) => {
-  getDb()
-    .prepare('DELETE FROM webauthn_credentials WHERE user_id = ?')
-    .run(req.params.userId)
-
+  getDb().prepare('DELETE FROM webauthn_credentials WHERE user_id = ?').run(req.params.userId)
   res.json({ success: true })
 })
 
