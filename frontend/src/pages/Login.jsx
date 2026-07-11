@@ -81,12 +81,7 @@ export default function Login() {
       <div className="login-card">
         <div className="login-brand">
           <img src="/logo-aprendeti.png" alt="AprendeTI Logo" style={{ maxHeight: '80px', width: 'auto' }} />
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <BookOpen size={24} />
-            Repositório de Conhecimento
-          </div>
         </div>
-        <p className="login-sub">Acesse a plataforma</p>
 
         {error && <div className="alert alert-error">{error}</div>}
 
