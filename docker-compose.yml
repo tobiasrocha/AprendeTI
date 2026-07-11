@@ -22,6 +22,9 @@ services:
       - JWT_SECRET=aprendeti_producao_secret_key_2026
       - WEBAUTHN_RP_ID=aprendeti.uman-app.uk
       - WEBAUTHN_ORIGIN=https://aprendeti.uman-app.uk
+      - ADMIN_USER=admin
+      - ADMIN_PASS=admin123
+      - ADMIN_EMAIL=admin@local.dev
     volumes:
       - sqlite_data:/data/db
       - uploads_data:/data/uploads
