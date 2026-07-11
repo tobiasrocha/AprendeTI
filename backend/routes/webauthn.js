@@ -54,7 +54,7 @@ function credentialToJSON(cred) {
 
 function credentialToAuth(cred) {
   return {
-    id: ub64(cred.credential_id),
+    id: cred.credential_id,
     publicKey: ub64(cred.public_key_pem),
     counter: cred.sign_count,
     transports: cred.transports ? JSON.parse(cred.transports) : undefined,
