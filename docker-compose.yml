@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  api:
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: aprendeti-api
+    restart: unless-stopped
+    volumes:
+      - sqlite_data:/data/db
+      - uploads_data:/data/uploads
+    ports:
+      - "3001:3001"
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    container_name: aprendeti-web
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+
+volumes:
+  sqlite_data:
+  uploads_data:
