@@ -10,8 +10,7 @@ services:
     volumes:
       - sqlite_data:/data/db
       - uploads_data:/data/uploads
-    ports:
-      - "3001:3001"
+
 
   web:
     build:
