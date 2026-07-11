@@ -34,9 +34,37 @@ export default function DocumentViewer() {
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
   const [showScrollTop, setShowScrollTop] = useState(false)
   const [fontSize, setFontSize] = useState(16)
+  const [toolbarHidden, setToolbarHidden] = useState(false)
+
   const imageRef = useRef(null)
   const lightboxRef = useRef(null)
   const renderRef = useRef(null)
+  const hideTimer = useRef(null)
+
+  const showToolbar = useCallback(() => {
+    setToolbarHidden(false)
+    clearTimeout(hideTimer.current)
+    hideTimer.current = setTimeout(() => {
+      setToolbarHidden(true)
+    }, 3000)
+  }, [])
+
+  useEffect(() => {
+    function onScroll() {
+      setToolbarHidden(true)
+      clearTimeout(hideTimer.current)
+    }
+    window.addEventListener('scroll', onScroll, { passive: true })
+    document.addEventListener('click', showToolbar)
+    document.addEventListener('touchstart', showToolbar)
+    showToolbar()
+    return () => {
+      window.removeEventListener('scroll', onScroll)
+      document.removeEventListener('click', showToolbar)
+      document.removeEventListener('touchstart', showToolbar)
+      clearTimeout(hideTimer.current)
+    }
+  }, [showToolbar])
 
   useEffect(() => {
     api.getDocument(id).then((d) => {
@@ -257,21 +285,6 @@ export default function DocumentViewer() {
         <div style={{ display: 'flex', gap: 8 }}>
           {fullscreen ? null : (
             <>
-              {!isImage && doc.format !== 'pdf' && (
-                <>
-                  <button className="btn btn-outline btn-sm" onClick={() => setFontSize((s) => Math.min(s + 2, 32))} title="Aumentar fonte">
-                    <span style={{ fontSize: 16, fontWeight: 700, lineHeight: 1 }}>A</span>
-                    <span style={{ fontSize: 10 }}>+</span>
-                  </button>
-                  <button className="btn btn-outline btn-sm" onClick={() => setFontSize((s) => Math.max(s - 2, 10))} title="Diminuir fonte">
-                    <span style={{ fontSize: 14, fontWeight: 700, lineHeight: 1 }}>A</span>
-                    <span style={{ fontSize: 10 }}>-</span>
-                  </button>
-                  <button className="btn btn-outline btn-sm" onClick={() => setFontSize(16)} title="Restaurar fonte">
-                    <span style={{ fontSize: 13, fontWeight: 700 }}>A</span>
-                  </button>
-                </>
-              )}
               {currentUser && doc.user_id === currentUser.id && (
                 <button className="btn btn-outline btn-sm" onClick={openShareModal} title="Compartilhar">
                   <Share2 size={14} /> Compartilhar
@@ -391,11 +404,20 @@ export default function DocumentViewer() {
           <div className="image-viewer-hint">Clique para ampliar</div>
         </div>
       ) : pdfUrl && doc.format === 'pdf' ? (
-        <iframe
-          src={pdfUrl}
-          style={{ width: '100%', height: fullscreen ? '100vh' : '80vh', border: '1px solid var(--border)', borderRadius: 8 }}
-          title={doc.title}
-        />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div className="mobile-pdf-btn" style={{ display: 'flex', justifyContent: 'center', padding: '16px 0' }}>
+            <button className="btn btn-primary" onClick={() => window.open(pdfUrl, '_blank')} style={{ width: '100%', padding: '16px', fontSize: '1.1rem' }}>
+              <FileText size={20} style={{ marginRight: 8 }} />
+              Abrir PDF no Navegador
+            </button>
+          </div>
+          <iframe
+            className="desktop-pdf-iframe"
+            src={pdfUrl}
+            style={{ width: '100%', height: fullscreen ? '100vh' : '80vh', border: '1px solid var(--border)', borderRadius: 8 }}
+            title={doc.title}
+          />
+        </div>
       ) : (
         <div
           className="doc-render"
@@ -450,6 +472,39 @@ export default function DocumentViewer() {
           </div>
         </div>
       )}
+
+      <style>{`
+        @media (max-width: 640px) {
+          .desktop-pdf-iframe { display: none !important; }
+        }
+        @media (min-width: 641px) {
+          .mobile-pdf-btn { display: none !important; }
+        }
+      `}</style>
+
+      {/* Toolbar Flutuante */}
+      <div className={`viewer-toolbar ${toolbarHidden ? 'hidden' : ''}`}>
+        {!isImage && doc.format !== 'pdf' && (
+          <>
+            <button onClick={() => setFontSize((s) => Math.max(s - 2, 10))} title="Diminuir fonte">
+              <span style={{ fontSize: 14, fontWeight: 700, lineHeight: 1 }}>A-</span>
+            </button>
+            <span style={{ fontSize: '.7rem', fontWeight: 600, color: 'var(--text-muted)', minWidth: '36px', textAlign: 'center', lineHeight: '36px' }}>
+              {fontSize}px
+            </span>
+            <button onClick={() => setFontSize((s) => Math.min(s + 2, 32))} title="Aumentar fonte">
+              <span style={{ fontSize: 16, fontWeight: 700, lineHeight: 1 }}>A+</span>
+            </button>
+            <button onClick={() => setFontSize(16)} title="Restaurar fonte">
+              <RotateCcw size={15} />
+            </button>
+            <div className="sep"></div>
+          </>
+        )}
+        <button onClick={toggleFullscreen} title="Tela cheia">
+          {fullscreen ? <Minimize size={16} /> : <Maximize size={16} />}
+        </button>
+      </div>
 
       {showShareModal && (
         <div className="modal-overlay" onClick={() => setShowShareModal(false)}>

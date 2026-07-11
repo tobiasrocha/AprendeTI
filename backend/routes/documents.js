@@ -95,9 +95,11 @@ function getAccessibleDocument(docId, userId) {
          user_id = ?
          OR id IN (SELECT document_id FROM document_shares WHERE shared_with_user_id = ?)
          OR id IN (SELECT dgs.document_id FROM document_group_shares dgs JOIN user_groups ug ON dgs.group_id = ug.group_id WHERE ug.user_id = ?)
+         OR parent_id IN (SELECT document_id FROM document_shares WHERE shared_with_user_id = ?)
+         OR parent_id IN (SELECT dgs.document_id FROM document_group_shares dgs JOIN user_groups ug ON dgs.group_id = ug.group_id WHERE ug.user_id = ?)
        )`
     )
-    .get(docId, userId, userId, userId)
+    .get(docId, userId, userId, userId, userId, userId)
 }
 
 router.get('/', (req, res) => {
@@ -109,8 +111,8 @@ router.get('/', (req, res) => {
   const conditions = []
   const condParams = []
 
-  conditions.push('(d.user_id = ? OR d.id IN (SELECT document_id FROM document_shares WHERE shared_with_user_id = ?) OR d.id IN (SELECT dgs.document_id FROM document_group_shares dgs JOIN user_groups ug ON dgs.group_id = ug.group_id WHERE ug.user_id = ?))')
-  condParams.push(req.user.id, req.user.id, req.user.id)
+  conditions.push('(d.user_id = ? OR d.id IN (SELECT document_id FROM document_shares WHERE shared_with_user_id = ?) OR d.id IN (SELECT dgs.document_id FROM document_group_shares dgs JOIN user_groups ug ON dgs.group_id = ug.group_id WHERE ug.user_id = ?) OR d.parent_id IN (SELECT document_id FROM document_shares WHERE shared_with_user_id = ?) OR d.parent_id IN (SELECT dgs.document_id FROM document_group_shares dgs JOIN user_groups ug ON dgs.group_id = ug.group_id WHERE ug.user_id = ?))')
+  condParams.push(req.user.id, req.user.id, req.user.id, req.user.id, req.user.id)
 
   if (search) {
     conditions.push('(d.title LIKE ? OR d.description LIKE ? OR d.content LIKE ?)')
@@ -156,8 +158,8 @@ router.get('/:id', (req, res) => {
               JOIN users u ON d.user_id = u.id
               LEFT JOIN categories c ON d.category_id = c.id
               LEFT JOIN documents p ON d.parent_id = p.id
-              WHERE d.id = ? AND (d.user_id = ? OR d.id IN (SELECT document_id FROM document_shares WHERE shared_with_user_id = ?) OR d.id IN (SELECT dgs.document_id FROM document_group_shares dgs JOIN user_groups ug ON dgs.group_id = ug.group_id WHERE ug.user_id = ?))`)
-    .get(req.params.id, req.user.id, req.user.id, req.user.id)
+              WHERE d.id = ? AND (d.user_id = ? OR d.id IN (SELECT document_id FROM document_shares WHERE shared_with_user_id = ?) OR d.id IN (SELECT dgs.document_id FROM document_group_shares dgs JOIN user_groups ug ON dgs.group_id = ug.group_id WHERE ug.user_id = ?) OR d.parent_id IN (SELECT document_id FROM document_shares WHERE shared_with_user_id = ?) OR d.parent_id IN (SELECT dgs.document_id FROM document_group_shares dgs JOIN user_groups ug ON dgs.group_id = ug.group_id WHERE ug.user_id = ?))`)
+    .get(req.params.id, req.user.id, req.user.id, req.user.id, req.user.id, req.user.id)
 
   if (!doc) return res.status(404).json({ error: 'Documento não encontrado' })
 

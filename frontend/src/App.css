@@ -752,3 +752,55 @@ body {
   box-shadow: 0 6px 20px rgba(0,0,0,.2);
   opacity: 1;
 }
+
+/* Toolbar Flutuante do Visualizador */
+.viewer-toolbar {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 9999;
+  display: flex;
+  gap: 4px;
+  background: rgba(255,255,255,0.95);
+  border-radius: 10px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.15);
+  padding: 4px;
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--border);
+  transition: opacity 0.3s, transform 0.3s;
+}
+.viewer-toolbar.hidden {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-10px);
+}
+.viewer-toolbar button {
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-weight: 700;
+  transition: all 0.15s;
+}
+.viewer-toolbar button:hover {
+  background: var(--primary-light);
+  color: var(--primary);
+}
+.viewer-toolbar .sep {
+  width: 1px;
+  background: var(--border);
+  margin: 4px 0;
+}
+@media (max-width: 640px) {
+  .viewer-toolbar { top: 8px; right: 8px; }
+  .mobile-pdf-btn { display: flex !important; }
+}
+@media print {
+  .viewer-toolbar { display: none !important; }
+}
