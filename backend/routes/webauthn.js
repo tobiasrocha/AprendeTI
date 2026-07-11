@@ -127,9 +127,11 @@ router.post('/register', async (req, res) => {
     return res.status(400).json({ error: 'Registro não verificado' })
   }
 
-  const { credentialID, credentialPublicKey, counter, transports } = verification.registrationInfo
-  const credIdB64 = b64(credentialID)
-  const pubKeyB64 = b64(credentialPublicKey)
+  const { credential } = verification.registrationInfo
+  const credIdB64 = credential.id
+  const pubKeyB64 = b64(credential.publicKey)
+  const counter = credential.counter
+  const transports = credential.transports
 
   getDb()
     .prepare('INSERT OR REPLACE INTO webauthn_credentials (user_id, credential_id, public_key_pem, sign_count, device_name, transports) VALUES (?, ?, ?, ?, ?, ?)')
