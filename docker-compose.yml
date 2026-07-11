@@ -19,12 +19,12 @@ services:
     container_name: aprendeti-api
     restart: unless-stopped
     environment:
-      - JWT_SECRET=aprendeti_producao_secret_key_2026
-      - WEBAUTHN_RP_ID=aprendeti.uman-app.uk
-      - WEBAUTHN_ORIGIN=https://aprendeti.uman-app.uk
-      - ADMIN_USER=admin
-      - ADMIN_PASS=admin123
-      - ADMIN_EMAIL=admin@local.dev
+      - JWT_SECRET=${JWT_SECRET}
+      - WEBAUTHN_RP_ID=${WEBAUTHN_RP_ID}
+      - WEBAUTHN_ORIGIN=${WEBAUTHN_ORIGIN}
+      - ADMIN_USER=${ADMIN_USER}
+      - ADMIN_PASS=${ADMIN_PASS}
+      - ADMIN_EMAIL=${ADMIN_EMAIL}
     volumes:
       - /data/infra/api/db:/data/db
       - /data/infra/api/uploads:/data/uploads

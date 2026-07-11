@@ -91,11 +91,11 @@ router.post('/register/options', async (req, res) => {
     excludeCredentials: existing.map((c) => credentialToJSON(c)),
   })
 
-  const challengeB64 = b64(options.challenge)
+  const challengeB64 = options.challenge
   const sessionId = `reg:${userId}:${crypto.randomUUID()}`
   saveChallenge(sessionId, challengeB64)
 
-  res.json({ options: { ...options, challenge: challengeB64 }, sessionId, label: nextDeviceLabel(userId) })
+  res.json({ options, sessionId, label: nextDeviceLabel(userId) })
 })
 
 router.post('/register', async (req, res) => {
@@ -161,11 +161,11 @@ router.post('/login/options', async (req, res) => {
     userVerification: 'required',
   })
 
-  const challengeB64 = b64(options.challenge)
+  const challengeB64 = options.challenge
   const sessionId = `login:${user.id}:${crypto.randomUUID()}`
   saveChallenge(sessionId, challengeB64)
 
-  res.json({ options: { ...options, challenge: challengeB64 }, sessionId })
+  res.json({ options, sessionId })
 })
 
 router.post('/login', async (req, res) => {
@@ -226,11 +226,11 @@ router.post('/login-discover-options', async (_req, res) => {
     userVerification: 'required',
   })
 
-  const challengeB64 = b64(options.challenge)
+  const challengeB64 = options.challenge
   const sessionId = `discover:${crypto.randomUUID()}`
   saveChallenge(sessionId, challengeB64)
 
-  res.json({ options: { ...options, challenge: challengeB64 }, sessionId })
+  res.json({ options, sessionId })
 })
 
 router.post('/login-discover', async (req, res) => {
