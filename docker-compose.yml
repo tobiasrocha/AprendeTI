@@ -14,8 +14,8 @@ services:
 
   api:
     build:
-      context: .
-      dockerfile: backend/Dockerfile
+      context: ./backend
+      dockerfile: Dockerfile
     container_name: aprendeti-api
     restart: unless-stopped
     volumes:
