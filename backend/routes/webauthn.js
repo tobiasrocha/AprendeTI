@@ -61,19 +61,13 @@ function credentialToAuth(cred) {
   }
 }
 
-function nextFingerLabel(userId) {
+function nextDeviceLabel(userId) {
   const taken = getDb()
     .prepare('SELECT device_name FROM webauthn_credentials WHERE user_id = ?')
     .all(userId)
     .map((c) => c.device_name)
 
-  const labels = [
-    'Polegar direito', 'Indicador direito', 'Medio direito',
-    'Anelar direito', 'Minimo direito',
-    'Polegar esquerdo', 'Indicador esquerdo', 'Medio esquerdo',
-    'Anelar esquerdo', 'Minimo esquerdo',
-  ]
-  return labels.find((l) => !taken.includes(l)) || `Dedo ${taken.length + 1}`
+  return `Dispositivo de Acesso ${taken.length + 1}`
 }
 
 router.post('/register/options', async (req, res) => {
@@ -90,7 +84,6 @@ router.post('/register/options', async (req, res) => {
     userDisplayName: username,
     attestationType: 'none',
     authenticatorSelection: {
-      authenticatorAttachment: 'platform',
       userVerification: 'required',
       residentKey: 'required',
       requireResidentKey: true,
@@ -102,7 +95,7 @@ router.post('/register/options', async (req, res) => {
   const sessionId = `reg:${userId}:${crypto.randomUUID()}`
   saveChallenge(sessionId, challengeB64)
 
-  res.json({ options: { ...options, challenge: challengeB64 }, sessionId, label: nextFingerLabel(userId) })
+  res.json({ options: { ...options, challenge: challengeB64 }, sessionId, label: nextDeviceLabel(userId) })
 })
 
 router.post('/register', async (req, res) => {

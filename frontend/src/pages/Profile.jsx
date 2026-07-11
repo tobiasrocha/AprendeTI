@@ -20,12 +20,7 @@ function base64urlToBuffer(str) {
 const webAuthnSupported = typeof window !== 'undefined' &&
   typeof window.PublicKeyCredential !== 'undefined'
 
-const FINGER_LABELS = [
-  'Polegar direito', 'Indicador direito', 'Medio direito',
-  'Anelar direito', 'Minimo direito',
-  'Polegar esquerdo', 'Indicador esquerdo', 'Medio esquerdo',
-  'Anelar esquerdo', 'Minimo esquerdo',
-]
+
 
 
 
@@ -55,14 +50,12 @@ export default function Profile() {
     setError('')
     setMessage('')
 
-    const takenLabels = new Set(credentials.map((c) => c.device_name))
-    const label = FINGER_LABELS.find((l) => !takenLabels.has(l)) || `Dedo ${credentials.length + 1}`
-
-    setCurrentFingerLabel(label)
     setRegistering(true)
 
     try {
-      const { options } = await api.webauthnRegisterOptions(user.id, user.username)
+      const { options, sessionId, label } = await api.webauthnRegisterOptions(user.id, user.username)
+      
+      setCurrentFingerLabel(label)
       options.challenge = base64urlToBuffer(options.challenge)
       options.user.id = base64urlToBuffer(options.user.id)
       if (options.excludeCredentials) {
@@ -83,15 +76,15 @@ export default function Profile() {
         },
       }
 
-      await api.webauthnRegister(user.id, credential, label)
+      await api.webauthnRegister(user.id, credential, label, sessionId)
       setRegistering(false)
-      setMessage(`Digital "${label}" cadastrada com sucesso!`)
+      setMessage(`Chave de acesso "${label}" cadastrada com sucesso!`)
       refreshCredentials()
     } catch (err) {
       setRegistering(false)
       setError(err.name === 'NotAllowedError'
-        ? 'Coleta cancelada. Posicione o dedo no leitor e tente novamente.'
-        : err.message || 'Falha ao registrar biometria')
+        ? 'Cadastro cancelado pelo usuario ou dispositivo.'
+        : err.message || 'Falha ao registrar chave de acesso')
     }
   }
 
@@ -107,7 +100,7 @@ export default function Profile() {
     try {
       await api.webauthnRemoveCredential(cred.id)
       refreshCredentials()
-      setMessage(`Digital "${cred.device_name}" removida.`)
+      setMessage(`Chave de acesso "${cred.device_name}" removida.`)
     } catch (err) {
       setError(err.message)
     }
@@ -203,7 +196,7 @@ export default function Profile() {
           <div className="card" style={{ gridColumn: '1 / -1' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
               <Fingerprint size={20} style={{ color: 'var(--primary)' }} />
-              <h3 style={{ fontSize: '1rem', fontWeight: 600 }}>Biometria</h3>
+              <h3 style={{ fontSize: '1rem', fontWeight: 600 }}>Chaves de Acesso (Passkeys)</h3>
             </div>
 
             {bioLoading ? (
@@ -213,7 +206,7 @@ export default function Profile() {
                 {registering && (
                   <div style={{ padding: '12px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
                     <Loader size={16} className="spin" style={{ color: 'var(--primary)' }} />
-                    <span style={{ fontSize: '.875rem' }}>Posicione o dedo no leitor para cadastrar "{currentFingerLabel}"...</span>
+                    <span style={{ fontSize: '.875rem' }}>Siga as instruções do seu dispositivo para cadastrar "{currentFingerLabel}"...</span>
                   </div>
                 )}
 
@@ -239,7 +232,7 @@ export default function Profile() {
                         <button
                           className="btn btn-outline btn-sm"
                           onClick={() => removeFinger(cred)}
-                          title="Remover esta digital"
+                          title="Remover esta chave"
                           style={{ color: 'var(--danger)', borderColor: 'var(--danger)', flexShrink: 0 }}
                         >
                           <Trash2 size={14} />
@@ -258,7 +251,7 @@ export default function Profile() {
                     }}>
                       <Fingerprint size={16} style={{ color: '#854d0e', flexShrink: 0 }} />
                       <span style={{ color: '#713f12' }}>
-                        Nenhuma digital cadastrada. Adicione para login rapido no celular.
+                        Nenhuma chave de acesso cadastrada. Adicione para login rápido via biometria, PIN ou pelo celular.
                       </span>
                     </div>
                   </div>
@@ -266,13 +259,13 @@ export default function Profile() {
 
                 {!isBusy && canAddMore && (
                   <button className="btn btn-primary btn-sm" onClick={startFingerRegistration}>
-                    <Plus size={14} /> {hasCredentials ? 'Adicionar outro dedo' : 'Cadastrar digital'}
+                    <Plus size={14} /> {hasCredentials ? 'Adicionar outra chave' : 'Cadastrar Chave de Acesso'}
                   </button>
                 )}
 
                 {!isBusy && !canAddMore && hasCredentials && (
                   <p style={{ fontSize: '.75rem', color: 'var(--text-muted)', marginTop: 8 }}>
-                    Todos os 10 dedos cadastrados.
+                    Limite de 10 chaves atingido.
                   </p>
                 )}
               </div>

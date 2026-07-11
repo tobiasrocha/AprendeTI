@@ -132,11 +132,11 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ userId, username }),
     }).then((r) => r.json().then((d) => r.ok ? d : Promise.reject(new Error(d.error)))),
-  webauthnRegister: (userId, credential, deviceName) =>
+  webauthnRegister: (userId, credential, deviceName, sessionId) =>
     fetch('/api/webauthn/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId, credential, deviceName }),
+      body: JSON.stringify({ userId, credential, deviceName, sessionId }),
     }).then((r) => r.json().then((d) => r.ok ? d : Promise.reject(new Error(d.error)))),
   webauthnVerify: (credential, sessionId) =>
     fetch('/api/webauthn/verify', {
