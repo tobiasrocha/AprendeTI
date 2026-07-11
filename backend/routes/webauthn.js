@@ -169,7 +169,7 @@ router.post('/login/options', async (req, res) => {
 router.post('/login', async (req, res) => {
   const { username, credential, sessionId } = req.body
   if (!username || !credential || !sessionId) {
-    return res.status(400).json({ error: 'Dados obrigatórios' })
+    return res.status(400).json({ error: `[Login] Dados ausentes. usr:${!!username}, cred:${!!credential}, sess:${!!sessionId}` })
   }
 
   const user = getDb()
@@ -233,7 +233,7 @@ router.post('/login-discover-options', async (_req, res) => {
 
 router.post('/login-discover', async (req, res) => {
   const { credential, sessionId } = req.body
-  if (!credential || !sessionId) return res.status(400).json({ error: 'Dados obrigatórios' })
+  if (!credential || !sessionId) return res.status(400).json({ error: `[Discover] Dados ausentes. cred:${!!credential}, sess:${!!sessionId}` })
 
   const stored = getDb()
     .prepare('SELECT * FROM webauthn_credentials WHERE credential_id = ?')
@@ -279,7 +279,7 @@ router.post('/login-discover', async (req, res) => {
 
 router.post('/verify', async (req, res) => {
   const { credential, sessionId } = req.body
-  if (!credential || !sessionId) return res.status(400).json({ error: 'Dados obrigatórios' })
+  if (!credential || !sessionId) return res.status(400).json({ error: `[Verify] Dados ausentes. cred:${!!credential}, sess:${!!sessionId}` })
 
   const stored = getDb()
     .prepare('SELECT * FROM webauthn_credentials WHERE credential_id = ?')
