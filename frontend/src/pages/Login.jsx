@@ -33,10 +33,7 @@ function buildCredential(assertion) {
   }
 }
 
-function doLogin(token, user) {
-  localStorage.setItem('token', token)
-  localStorage.setItem('user', JSON.stringify(user))
-}
+
 
 const webAuthnSupported = typeof window !== 'undefined' &&
   typeof window.PublicKeyCredential !== 'undefined'
@@ -48,7 +45,7 @@ export default function Login() {
   const [loading, setLoading] = useState(false)
   const [bioUsername, setBioUsername] = useState('')
   const [showUsername, setShowUsername] = useState(false)
-  const { login } = useAuth()
+  const { login, setAuthTokenAndUser } = useAuth()
   const navigate = useNavigate()
 
   async function handleSubmit(e) {
@@ -82,7 +79,7 @@ export default function Login() {
       const assertion = await navigator.credentials.get({ publicKey })
       const credential = buildCredential(assertion)
       const result = await api.webauthnLoginDiscover(credential, challengeRes.sessionId)
-      doLogin(result.token, result.user)
+      setAuthTokenAndUser(result)
       navigate('/')
     } catch (err) {
       setLoading(false)
@@ -118,7 +115,7 @@ export default function Login() {
       const assertion = await navigator.credentials.get({ publicKey })
       const credential = buildCredential(assertion)
       const result = await api.webauthnLogin(bioUsername.trim(), credential, optionsRes.sessionId)
-      doLogin(result.token, result.user)
+      setAuthTokenAndUser(result)
       navigate('/')
     } catch (err) {
       setError(err.message || 'Falha na autenticação')

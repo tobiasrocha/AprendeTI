@@ -27,15 +27,7 @@ const FINGER_LABELS = [
   'Anelar esquerdo', 'Minimo esquerdo',
 ]
 
-const SCAN_POSITIONS = [
-  'Encoste a ponta do dedo centralizada no leitor',
-  'Encoste a parte superior do dedo',
-  'Encoste a lateral direita do dedo',
-  'Encoste a lateral esquerda do dedo',
-  'Encoste a base do dedo centralizada',
-]
 
-const VERIFICATIONS_PER_FINGER = 5
 
 export default function Profile() {
   const { user } = useAuth()
@@ -48,13 +40,7 @@ export default function Profile() {
   const [credentials, setCredentials] = useState([])
   const [bioLoading, setBioLoading] = useState(true)
   const [registering, setRegistering] = useState(false)
-  const [verifying, setVerifying] = useState(false)
-  const [verifyProgress, setVerifyProgress] = useState(0)
-  const [verifyTotal, setVerifyTotal] = useState(0)
-  const [verifyOk, setVerifyOk] = useState(0)
-  const [verifyFail, setVerifyFail] = useState(0)
   const [currentFingerLabel, setCurrentFingerLabel] = useState('')
-  const [scanHint, setScanHint] = useState('')
 
   useEffect(() => {
     if (!webAuthnSupported || !user) return
@@ -65,7 +51,7 @@ export default function Profile() {
   }, [user])
 
   async function startFingerRegistration() {
-    if (registering || verifying) return
+    if (registering) return
     setError('')
     setMessage('')
 
@@ -99,88 +85,17 @@ export default function Profile() {
 
       await api.webauthnRegister(user.id, credential, label)
       setRegistering(false)
-
-      await new Promise((r) => setTimeout(r, 800))
-      await runVerifications(label)
+      setMessage(`Digital "${label}" cadastrada com sucesso!`)
+      refreshCredentials()
     } catch (err) {
       setRegistering(false)
-      setVerifying(false)
       setError(err.name === 'NotAllowedError'
         ? 'Coleta cancelada. Posicione o dedo no leitor e tente novamente.'
         : err.message || 'Falha ao registrar biometria')
     }
   }
 
-  async function runVerifications(label) {
-    setVerifying(true)
-    setVerifyProgress(0)
-    setVerifyTotal(VERIFICATIONS_PER_FINGER)
-    setVerifyOk(0)
-    setVerifyFail(0)
-    setScanHint('')
 
-    let collected = 0
-    let retries = 0
-    const MAX_RETRIES = 15
-
-    while (collected < VERIFICATIONS_PER_FINGER && retries < MAX_RETRIES) {
-      await new Promise((r) => setTimeout(r, 500))
-      setScanHint(SCAN_POSITIONS[collected] || `Leitura ${collected + 1} de ${VERIFICATIONS_PER_FINGER}`)
-
-      try {
-        const challengeRes = await api.webauthnLoginDiscoverOptions()
-        const { sessionId, options } = challengeRes
-
-        const publicKey = {
-          challenge: base64urlToBuffer(options.challenge),
-          rpId: options.rpId,
-          timeout: 60000,
-          userVerification: 'required',
-        }
-
-        let assertion
-        try {
-          assertion = await navigator.credentials.get({ publicKey })
-        } catch (getErr) {
-          retries++
-          setVerifyFail((f) => f + 1)
-          continue
-        }
-
-        const credPayload = {
-          id: assertion.id,
-          type: assertion.type,
-          response: {
-            authenticatorData: bufferToBase64url(assertion.response.authenticatorData),
-            clientDataJSON: bufferToBase64url(assertion.response.clientDataJSON),
-            signature: bufferToBase64url(assertion.response.signature),
-            userHandle: assertion.response.userHandle
-              ? bufferToBase64url(assertion.response.userHandle)
-              : null,
-          },
-        }
-
-        await api.webauthnVerify(credPayload, sessionId)
-        collected++
-        setVerifyProgress(collected)
-        setVerifyOk((o) => o + 1)
-      } catch (err) {
-        retries++
-        setVerifyFail((f) => f + 1)
-      }
-    }
-
-    setVerifying(false)
-
-    if (collected >= VERIFICATIONS_PER_FINGER) {
-      setMessage(`Digital "${label}" cadastrada com sucesso! ${collected} leituras validadas.`)
-    } else {
-      setError(`Coleta parcial: ${collected} de ${VERIFICATIONS_PER_FINGER} leituras concluidas. Recomendamos recadastrar o dedo para melhor precisao.`)
-    }
-
-    setScanHint('')
-    refreshCredentials()
-  }
 
   function refreshCredentials() {
     api.webauthnCredentials(user.id)
@@ -227,7 +142,7 @@ export default function Profile() {
 
   const hasCredentials = credentials.length > 0
   const canAddMore = credentials.length < 10 && webAuthnSupported
-  const isBusy = registering || verifying
+  const isBusy = registering
 
   return (
     <div>
@@ -295,36 +210,7 @@ export default function Profile() {
               <p style={{ fontSize: '.8125rem', color: 'var(--text-muted)' }}>Verificando...</p>
             ) : (
               <div>
-                {verifying && (
-                  <div className="biometric-verify-progress">
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-                      <Loader size={16} className="spin" style={{ color: 'var(--primary)' }} />
-                      <span style={{ fontWeight: 600, fontSize: '.875rem' }}>
-                        Coletando "{currentFingerLabel}"
-                      </span>
-                    </div>
-                    <div className="progress-bar">
-                      <div
-                        className="progress-fill"
-                        style={{ width: `${Math.round((verifyProgress / verifyTotal) * 100)}%` }}
-                      />
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, fontSize: '.75rem' }}>
-                      <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>
-                        {scanHint}
-                      </span>
-                      <span style={{ color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                        <span style={{ color: 'var(--success)' }}>&#10003; {verifyOk}</span>
-                        {verifyFail > 0 && <span style={{ color: 'var(--danger)', marginLeft: 10 }}>&#10007; {verifyFail}</span>}
-                      </span>
-                    </div>
-                    <div style={{ fontSize: '.75rem', color: 'var(--text-muted)', marginTop: 2 }}>
-                      Leitura {verifyProgress} de {verifyTotal}
-                    </div>
-                  </div>
-                )}
-
-                {registering && !verifying && (
+                {registering && (
                   <div style={{ padding: '12px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
                     <Loader size={16} className="spin" style={{ color: 'var(--primary)' }} />
                     <span style={{ fontSize: '.875rem' }}>Posicione o dedo no leitor para cadastrar "{currentFingerLabel}"...</span>

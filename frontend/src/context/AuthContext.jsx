@@ -36,8 +36,14 @@ export function AuthProvider({ children }) {
     setUser(null)
   }
 
+  function setAuthTokenAndUser(data) {
+    localStorage.setItem('token', data.token)
+    localStorage.setItem('user', JSON.stringify(data.user))
+    setUser(data.user)
+  }
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, setAuthTokenAndUser }}>
       {children}
     </AuthContext.Provider>
   )
