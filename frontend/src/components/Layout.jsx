@@ -53,8 +53,8 @@ export default function Layout() {
         </button>
 
         <NavLink to="/" className="sidebar-brand" title="Dashboard">
-          <BookOpen size={28} />
-          <span className="sidebar-brand-text">AprendeTI</span>
+          <img src="/logo-aprendeti.png" alt="AprendeTI" style={{ height: '32px', width: 'auto', display: collapsed ? 'none' : 'block' }} />
+          {collapsed && <BookOpen size={24} />}
         </NavLink>
 
         <div className="sidebar-section"><span>Principal</span></div>
@@ -112,7 +112,7 @@ export default function Layout() {
           <button className="mobile-menu-btn" onClick={() => setMobileOpen(true)}>
             <Menu size={20} />
           </button>
-          <span className="mobile-brand">AprendeTI</span>
+          <img src="/logo-aprendeti.png" alt="AprendeTI" style={{ height: '28px', width: 'auto' }} />
         </div>
         <Outlet />
       </main>
