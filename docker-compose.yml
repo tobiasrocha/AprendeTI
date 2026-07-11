@@ -26,9 +26,7 @@ services:
       - ADMIN_PASS=admin123
       - ADMIN_EMAIL=admin@local.dev
     volumes:
-      - sqlite_data:/data/db
-      - uploads_data:/data/uploads
+      - /data/infra/api/db:/data/db
+      - /data/infra/api/uploads:/data/uploads
 
-volumes:
-  sqlite_data:
-  uploads_data:
+
