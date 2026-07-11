@@ -70,14 +70,13 @@ export default function Login() {
       const challengeRes = await api.webauthnLoginDiscoverOptions()
 
       const publicKey = {
-        challenge: base64urlToBuffer(challengeRes.options.challenge),
+        challenge: challengeRes.options.challenge,
         rpId: challengeRes.options.rpId,
         timeout: 60000,
         userVerification: 'required',
       }
 
-      const assertion = await navigator.credentials.get({ publicKey })
-      const credential = buildCredential(assertion)
+      const credential = await startAuthentication({ optionsJSON: publicKey })
       const result = await api.webauthnLoginDiscover(credential, challengeRes.sessionId)
       setAuthTokenAndUser(result)
       navigate('/')
@@ -102,18 +101,17 @@ export default function Login() {
       const optionsRes = await api.webauthnLoginOptions(bioUsername.trim())
 
       const publicKey = {
-        challenge: base64urlToBuffer(optionsRes.options.challenge),
+        challenge: optionsRes.options.challenge,
         rpId: optionsRes.options.rpId,
         timeout: 60000,
         userVerification: 'required',
         allowCredentials: optionsRes.options.allowCredentials.map((c) => ({
           type: c.type,
-          id: base64urlToBuffer(c.id),
+          id: c.id,
         })),
       }
 
-      const assertion = await navigator.credentials.get({ publicKey })
-      const credential = buildCredential(assertion)
+      const credential = await startAuthentication({ optionsJSON: publicKey })
       const result = await api.webauthnLogin(bioUsername.trim(), credential, optionsRes.sessionId)
       setAuthTokenAndUser(result)
       navigate('/')

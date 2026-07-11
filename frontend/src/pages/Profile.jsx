@@ -3,19 +3,7 @@ import { useAuth } from '../context/AuthContext'
 import { api } from '../api'
 import { KeyRound, User, Fingerprint, ShieldCheck, Trash2, Plus, Loader, Check, AlertTriangle, X as XIcon } from 'lucide-react'
 
-function bufferToBase64url(buf) {
-  return btoa(String.fromCharCode(...new Uint8Array(buf)))
-    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
-}
-
-function base64urlToBuffer(str) {
-  const base64 = str.replace(/-/g, '+').replace(/_/g, '/')
-  const padded = base64 + '==='.slice(0, (4 - base64.length % 4) % 4)
-  const raw = atob(padded)
-  const buf = new Uint8Array(raw.length)
-  for (let i = 0; i < raw.length; i++) buf[i] = raw.charCodeAt(i)
-  return buf.buffer
-}
+import { startRegistration } from '@simplewebauthn/browser'
 
 const webAuthnSupported = typeof window !== 'undefined' &&
   typeof window.PublicKeyCredential !== 'undefined'
@@ -58,25 +46,7 @@ export default function Profile() {
       const { options, sessionId, label } = await api.webauthnRegisterOptions(user.id, user.username)
       
       setCurrentFingerLabel(label)
-      options.challenge = base64urlToBuffer(options.challenge)
-      options.user.id = base64urlToBuffer(options.user.id)
-      if (options.excludeCredentials) {
-        options.excludeCredentials = options.excludeCredentials.map((c) => ({
-          ...c,
-          id: base64urlToBuffer(c.id),
-        }))
-      }
-
-      const cred = await navigator.credentials.create({ publicKey: options })
-
-      const credential = {
-        id: cred.id,
-        type: cred.type,
-        response: {
-          attestationObject: bufferToBase64url(cred.response.attestationObject),
-          clientDataJSON: bufferToBase64url(cred.response.clientDataJSON),
-        },
-      }
+      const credential = await startRegistration({ optionsJSON: options })
 
       await api.webauthnRegister(user.id, credential, label, sessionId)
       setRegistering(false)
