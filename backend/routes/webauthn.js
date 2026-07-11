@@ -101,7 +101,7 @@ router.post('/register/options', async (req, res) => {
 router.post('/register', async (req, res) => {
   const { userId, credential, deviceName, sessionId } = req.body
   if (!userId || !credential || !sessionId) {
-    return res.status(400).json({ error: 'Dados obrigatórios' })
+    return res.status(400).json({ error: `Dados obrigatorios ausentes. userId:${!!userId}, cred:${!!credential}, session:${!!sessionId}` })
   }
 
   const expectedChallenge = takeChallenge(sessionId)

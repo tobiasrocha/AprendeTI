@@ -35,6 +35,8 @@ export default function Profile() {
   const [credentials, setCredentials] = useState([])
   const [bioLoading, setBioLoading] = useState(true)
   const [registering, setRegistering] = useState(false)
+  const [bioMessage, setBioMessage] = useState('')
+  const [bioError, setBioError] = useState('')
   const [currentFingerLabel, setCurrentFingerLabel] = useState('')
 
   useEffect(() => {
@@ -47,8 +49,8 @@ export default function Profile() {
 
   async function startFingerRegistration() {
     if (registering) return
-    setError('')
-    setMessage('')
+    setBioError('')
+    setBioMessage('')
 
     setRegistering(true)
 
@@ -78,11 +80,11 @@ export default function Profile() {
 
       await api.webauthnRegister(user.id, credential, label, sessionId)
       setRegistering(false)
-      setMessage(`Chave de acesso "${label}" cadastrada com sucesso!`)
+      setBioMessage(`Chave de acesso "${label}" cadastrada com sucesso!`)
       refreshCredentials()
     } catch (err) {
       setRegistering(false)
-      setError(err.name === 'NotAllowedError'
+      setBioError(err.name === 'NotAllowedError'
         ? 'Cadastro cancelado pelo usuario ou dispositivo.'
         : err.message || 'Falha ao registrar chave de acesso')
     }
@@ -100,9 +102,9 @@ export default function Profile() {
     try {
       await api.webauthnRemoveCredential(cred.id)
       refreshCredentials()
-      setMessage(`Chave de acesso "${cred.device_name}" removida.`)
+      setBioMessage(`Chave de acesso "${cred.device_name}" removida.`)
     } catch (err) {
-      setError(err.message)
+      setBioError(err.message)
     }
   }
 
@@ -198,6 +200,9 @@ export default function Profile() {
               <Fingerprint size={20} style={{ color: 'var(--primary)' }} />
               <h3 style={{ fontSize: '1rem', fontWeight: 600 }}>Chaves de Acesso (Passkeys)</h3>
             </div>
+
+            {bioMessage && <div className="alert alert-success">{bioMessage}</div>}
+            {bioError && <div className="alert alert-error">{bioError}</div>}
 
             {bioLoading ? (
               <p style={{ fontSize: '.8125rem', color: 'var(--text-muted)' }}>Verificando...</p>
