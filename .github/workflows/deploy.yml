@@ -11,9 +11,24 @@ jobs:
     
     steps:
       - name: Atualizar Repositorio e Reconstruir Conteineres
+        env:
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          WEBAUTHN_RP_ID: ${{ secrets.WEBAUTHN_RP_ID }}
+          WEBAUTHN_ORIGIN: ${{ secrets.WEBAUTHN_ORIGIN }}
+          ADMIN_USER: ${{ secrets.ADMIN_USER }}
+          ADMIN_PASS: ${{ secrets.ADMIN_PASS }}
+          ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}
         run: |
           cd /data/repositorio-aprendeti/
           git fetch origin main
           git reset --hard origin/main
+          
+          echo "JWT_SECRET=$JWT_SECRET" > .env
+          echo "WEBAUTHN_RP_ID=$WEBAUTHN_RP_ID" >> .env
+          echo "WEBAUTHN_ORIGIN=$WEBAUTHN_ORIGIN" >> .env
+          echo "ADMIN_USER=$ADMIN_USER" >> .env
+          echo "ADMIN_PASS=$ADMIN_PASS" >> .env
+          echo "ADMIN_EMAIL=$ADMIN_EMAIL" >> .env
+          
           docker compose up -d --build
           docker image prune -f
