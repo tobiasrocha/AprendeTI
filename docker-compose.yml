@@ -18,6 +18,10 @@ services:
       dockerfile: Dockerfile
     container_name: aprendeti-api
     restart: unless-stopped
+    environment:
+      - JWT_SECRET=aprendeti_producao_secret_key_2026
+      - WEBAUTHN_RP_ID=aprendeti.uman-app.uk
+      - WEBAUTHN_ORIGIN=https://aprendeti.uman-app.uk
     volumes:
       - sqlite_data:/data/db
       - uploads_data:/data/uploads
