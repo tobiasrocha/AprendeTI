@@ -308,7 +308,7 @@ body {
 
 @media (max-width: 768px) {
   .doc-content {
-    font-size: .875rem;
+    font-size: var(--doc-font-size, .875rem);
     max-width: 100%;
     overflow-wrap: break-word;
     word-break: break-word;

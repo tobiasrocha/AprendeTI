@@ -35,6 +35,7 @@ export default function DocumentViewer() {
   const [showScrollTop, setShowScrollTop] = useState(false)
   const [fontSize, setFontSize] = useState(16)
   const [toolbarHidden, setToolbarHidden] = useState(false)
+  const [selectedChildren, setSelectedChildren] = useState([])
 
   const imageRef = useRef(null)
   const lightboxRef = useRef(null)
@@ -177,6 +178,7 @@ export default function DocumentViewer() {
     api.getUsers().then(setUsers).catch(() => {})
     api.getGroups().then(setGroups).catch(() => {})
     setShowShareModal(true)
+    setSelectedChildren([])
     setShareError('')
     setLinkCopied(false)
     api.getDocument(id).then((d) => {
@@ -192,6 +194,11 @@ export default function DocumentViewer() {
     if (!selectedUserId) return
     try {
       await api.shareDocument(id, selectedUserId)
+      if (selectedChildren.length > 0) {
+        for (const childId of selectedChildren) {
+          await api.shareDocument(childId, selectedUserId).catch(() => {})
+        }
+      }
       const updated = await api.getDocumentShares(id)
       setShares(updated.users || [])
       setSelectedUserId('')
@@ -205,6 +212,11 @@ export default function DocumentViewer() {
     if (!selectedGroupId) return
     try {
       await api.shareDocumentWithGroup(id, selectedGroupId)
+      if (selectedChildren.length > 0) {
+        for (const childId of selectedChildren) {
+          await api.shareDocumentWithGroup(childId, selectedGroupId).catch(() => {})
+        }
+      }
       const updated = await api.getDocumentShares(id)
       setGroupShares(updated.groups || [])
       setSelectedGroupId('')
@@ -533,6 +545,29 @@ export default function DocumentViewer() {
               </select>
               <button className="btn btn-primary btn-sm" onClick={handleShareGroup} disabled={!selectedGroupId}>Compartilhar</button>
             </div>
+
+            {doc?.children && doc.children.length > 0 && (
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: '.75rem', fontWeight: 600, marginBottom: 8, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.05em' }}>
+                  Incluir Subdocumentos
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 120, overflowY: 'auto', border: '1px solid var(--border)', padding: 8, borderRadius: 6 }}>
+                  {doc.children.map((child) => (
+                    <label key={child.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '.875rem', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={selectedChildren.includes(child.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) setSelectedChildren([...selectedChildren, child.id])
+                          else setSelectedChildren(selectedChildren.filter(id => id !== child.id))
+                        }}
+                      />
+                      {child.title}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div style={{
               marginTop: 16, marginBottom: 16, padding: 16,
